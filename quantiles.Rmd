@@ -124,7 +124,7 @@ Temperature anomaly quantiles from Hector 15000 member ensemble:
 warming_quantiles_hector <- metrics_df %>% 
   group_by(scenario, term_length) %>% 
   summarize(
-    lower = quantile(metric_result, probs = 0.05), 
+    lower = quantile(metric_result, probs = 0.15), 
     central = quantile(metric_result, probs = 0.5), 
     upper = quantile(metric_result, probs = 0.95),
   .groups = "drop")
@@ -132,9 +132,72 @@ warming_quantiles_hector <- metrics_df %>%
 ```
 
 ```{r}
+# Display the computed quantiles as a table
+library(knitr)
 
-# Display the table
-knitr::kable(metrics_df, format = "markdown", col.names = c("Scenario", "Term Length", "Lower Quantile", "Central Quantile", "Upper Quantile"))
+# IPCC data 
+source("data/ipcc_data/ipcc_warming_data.R")
+IPCC_data <- subset(IPCC_data, name == "WG1 Assessed Range")
+names(IPCC_data) <- c()
+
+kable(warming_quantiles_hector, 
+      caption = "Temperature Anomaly Quantiles for Hector 15000 Member Ensemble",
+      col.names = c("Scenario", "Term Length", "Lower Quantile (5%)", "Central Quantile (50%)", "Upper Quantile (95%)"))
 
 ```
+
+```{r}
+
+# Example distribution (your Hector ensemble result)
+hector_distribution <- metric_test$`SSP1-1.9.2021-2040`$metric_result
+
+# Value you want to find the quantile for (e.g., 0.38)
+value_to_find <- 0.85
+
+# Sort the distribution to prepare for the ECDF
+sorted_distribution <- sort(hector_distribution)
+
+# Generate the empirical cumulative distribution function (ECDF)
+ecdf_function <- ecdf(sorted_distribution)
+
+# Use the ECDF to find the cumulative probability (percentile) for the given value
+percentile_of_value <- ecdf_function(value_to_find)
+
+# Print the percentile (cumulative probability) for the value
+cat("The value", value_to_find, "is at approximately", round(percentile_of_value * 100, 2), "percentile of the distribution.\n")
+
+```
+
+```{r}
+# Iterate through each item in the ipcc_data_test list
+for (scenario_term in names(ipcc_data_test)) {
+  # Extract the corresponding Hector distribution (metric_result)
+  hector_distribution <- metric_test[[scenario_term]]$metric_result
+  
+  # Sort the Hector distribution
+  sorted_distribution <- sort(hector_distribution)
+  
+  # Create the ECDF function
+  ecdf_function <- ecdf(sorted_distribution)
+  
+  # Extract the corresponding IPCC values (lower, median, upper)
+  ipcc_values <- ipcc_data_test[[scenario_term]]
+  lower_ci <- ipcc_values$lower_ci
+  median_ci <- ipcc_values$median
+  upper_ci <- ipcc_values$upper_ci
+  
+  # Compute the percentiles for the lower, median, and upper IPCC values
+  lower_percentile <- ecdf_function(lower_ci)
+  median_percentile <- ecdf_function(median_ci)
+  upper_percentile <- ecdf_function(upper_ci)
+  
+  # Print the percentiles for this scenario and term length
+  cat("Scenario:", scenario_term, "\n")
+  cat("Lower CI (", lower_ci, ") is at approximately", round(lower_percentile * 100, 2), "percentile\n")
+  cat("Median CI (", median_ci, ") is at approximately", round(median_percentile * 100, 2), "percentile\n")
+  cat("Upper CI (", upper_ci, ") is at approximately", round(upper_percentile * 100, 2), "percentile\n")
+  cat("\n") # To separate results for clarity
+}
+```
+
 
