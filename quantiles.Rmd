@@ -1,0 +1,140 @@
+---
+title: "Idk the name yet"
+author: "Joe Brown"
+date: "2025-01-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Goal
+
+1. Identify the 2100 temperature anomaly of 15000 member ensemble at quantiles. 
+
+2. Identify the quantiles at which the Hector 15000 member ensemble has temperatures that match AR6 percentiles.
+
+## Load data
+
+Load full result:
+```{r}
+# load result 
+result <- readRDS("output/model_results/initial_result.RDS")
+
+```
+
+source helper functions:
+```{r}
+# source utils
+source("set-up/utils.R")
+source("set-up/libraries.R")
+```
+
+Subset data to include `global_tas` and normalize data to AR6 reference period:
+```{r}
+## subset to only include global_tas
+gsat_data <- lapply(names(result), function(scenario_name) {
+  
+  # copy data
+  df <- result[[scenario_name]]
+  
+  # Count NAs before removal
+  na_count <- sum(is.na(df))
+  print(paste("Number of NAs in", scenario_name, "data:", na_count))
+  
+  # subset data to include only global temperature
+  subset_data = subset(na.omit(df), variable == "global_tas")
+  
+  subset_data$scenario <- scenario_name
+  
+  return(subset_data)
+})
+
+## copy list element names
+names(gsat_data) <- names(result)
+
+## normalize gsat data
+gsat_data_normalized <- lapply(gsat_data, function(df) {
+  
+  normalize_to_reference(df, reference_start = 1995, reference_end = 2014)
+  
+}) 
+
+rm(result)
+```
+
+# Compute warming metrics
+
+Compute warming metrics for AR6 time periods:
+
+```{r}
+
+# initialize metric 
+long_warming_metric <- new_metric(var = 'global_tas', years = 2081:2100, op = median)
+mid_warming_metric <- new_metric(var = 'global_tas', years = 2041:2060, op = median)
+short_warming_metric <- new_metric(var = 'global_tas', years = 2021:2040, op = median)
+
+metric_list <- list('2081-2100' = long_warming_metric, 
+                    '2041-2060' = mid_warming_metric, 
+                    '2021-2040' = short_warming_metric)
+
+# compute mid-term warming metrics
+warming_result <- lapply(names(gsat_data_normalized), function(scenario_name) {
+  
+  # copy gsat data
+  df <- gsat_data_normalized[[scenario_name]]
+  
+  # compute metrics for each term length for current scenario element 
+  metrics_by_term <- lapply(names(metric_list), function(term_length) {
+
+    # copy metric data
+    metric <- metric_list[[term_length]]
+        
+    # compute metrics
+    result <- metric_calc(df, metric)
+    
+    # add term_length column
+    result$term_length <- term_length
+  
+    return(result)  
+  })  
+  
+  # rbind term_lengths for currrent scenario element
+  metrics_by_scenario <- do.call(rbind, metrics_by_term)
+  
+  # Add column for scenario name
+  metrics_by_scenario$scenario <- scenario_name
+  
+  return(metrics_by_scenario)
+
+})
+
+# bind metric result for all scenarios to one df
+metrics_df <- do.call(rbind, warming_result)
+
+```
+
+# Compute temp anomaly quantiles
+
+Temperature anomaly quantiles from Hector 15000 member ensemble:
+
+```{r}
+
+warming_quantiles_hector <- metrics_df %>% 
+  group_by(scenario, term_length) %>% 
+  summarize(
+    lower = quantile(metric_result, probs = 0.05), 
+    central = quantile(metric_result, probs = 0.5), 
+    upper = quantile(metric_result, probs = 0.95),
+  .groups = "drop")
+
+```
+
+```{r}
+
+# Display the table
+knitr::kable(metrics_df, format = "markdown", col.names = c("Scenario", "Term Length", "Lower Quantile", "Central Quantile", "Upper Quantile"))
+
+```
+
