@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 Load full result:
 ```{r}
 # load result 
-result <- readRDS("output/model_results/initial_result.RDS")
+model_result <- readRDS("output/model_results/initial_result5k.RDS")
 
 ```
 
@@ -34,10 +34,10 @@ source("set-up/libraries.R")
 Subset data to include `global_tas` and normalize data to AR6 reference period:
 ```{r}
 ## subset to only include global_tas
-gsat_data <- lapply(names(result), function(scenario_name) {
+gsat_data <- lapply(names(model_result), function(scenario_name) {
   
   # copy data
-  df <- result[[scenario_name]]
+  df <- model_result[[scenario_name]]
   
   # Count NAs before removal
   na_count <- sum(is.na(df))
@@ -52,7 +52,7 @@ gsat_data <- lapply(names(result), function(scenario_name) {
 })
 
 ## copy list element names
-names(gsat_data) <- names(result)
+names(gsat_data) <- names(model_result)
 
 ## normalize gsat data
 gsat_data_normalized <- lapply(gsat_data, function(df) {
@@ -132,27 +132,22 @@ warming_quantiles_hector <- metrics_df %>%
 ```
 
 ```{r}
-# Display the computed quantiles as a table
-library(knitr)
-
 # IPCC data 
 source("data/ipcc_data/ipcc_warming_data.R")
 IPCC_data <- subset(IPCC_data, name == "WG1 Assessed Range")
-names(IPCC_data) <- c()
-
-kable(warming_quantiles_hector, 
-      caption = "Temperature Anomaly Quantiles for Hector 15000 Member Ensemble",
-      col.names = c("Scenario", "Term Length", "Lower Quantile (5%)", "Central Quantile (50%)", "Upper Quantile (95%)"))
 
 ```
 
+For one scenario-term combination find in what percentile the IPCC value exists in the Hector distribution:
 ```{r}
+# metric split - split by scenario and term length
+metric_split <- split(metrics_df, list(metrics_df$scenario, metrics_df$term_length))
 
 # Example distribution (your Hector ensemble result)
-hector_distribution <- metric_test$`SSP1-1.9.2021-2040`$metric_result
+hector_distribution <- metric_split$`SSP1-1.9.2021-2040`$metric_result
 
-# Value you want to find the quantile for (e.g., 0.38)
-value_to_find <- 0.85
+# Value to find the quantile for.
+value_to_find <- 0.38
 
 # Sort the distribution to prepare for the ECDF
 sorted_distribution <- sort(hector_distribution)
@@ -167,12 +162,49 @@ percentile_of_value <- ecdf_function(value_to_find)
 cat("The value", value_to_find, "is at approximately", round(percentile_of_value * 100, 2), "percentile of the distribution.\n")
 
 ```
-
+testing across all scenario-term combinations:
 ```{r}
-# Iterate through each item in the ipcc_data_test list
-for (scenario_term in names(ipcc_data_test)) {
+# # split IPCC by scenario and term length
+# ipcc_data_test <- split(IPCC_data, list(IPCC_data$scenario, IPCC_data$metric_criterion))
+# 
+# # Iterate through each item in the ipcc_data_test list
+# for (scenario_term in names(ipcc_data_test)) {
+#   # Extract the corresponding Hector distribution (metric_result)
+#   hector_distribution <- metric_test[[scenario_term]]$metric_result
+#   
+#   # Sort the Hector distribution
+#   sorted_distribution <- sort(hector_distribution)
+#   
+#   # Create the ECDF function
+#   ecdf_function <- ecdf(sorted_distribution)
+#   
+#   # Extract the corresponding IPCC values (lower, median, upper)
+#   ipcc_values <- ipcc_data_test[[scenario_term]]
+#   lower_ci <- ipcc_values$lower_ci
+#   median_ci <- ipcc_values$median
+#   upper_ci <- ipcc_values$upper_ci
+#   
+#   # Compute the percentiles for the lower, median, and upper IPCC values
+#   lower_percentile <- ecdf_function(lower_ci)
+#   median_percentile <- ecdf_function(median_ci)
+#   upper_percentile <- ecdf_function(upper_ci)
+#   
+#   # Print the percentiles for this scenario and term length
+#   cat("Scenario:", scenario_term, "\n")
+#   cat("Lower CI (", lower_ci, ") is at approximately", round(lower_percentile * 100, 2), "percentile\n")
+#   cat("Median CI (", median_ci, ") is at approximately", round(median_percentile * 100, 2), "percentile\n")
+#   cat("Upper CI (", upper_ci, ") is at approximately", round(upper_percentile * 100, 2), "percentile\n")
+#   cat("\n") # To separate results for clarity
+# }
+```
+
+Using lapply for this:
+```{r}
+# Use lapply with an anonymous function to calculate percentiles
+percentiles_list <- lapply(names(ipcc_data_test), function(scenario_term) {
+  
   # Extract the corresponding Hector distribution (metric_result)
-  hector_distribution <- metric_test[[scenario_term]]$metric_result
+  hector_distribution <- metric_split[[scenario_term]]$metric_result
   
   # Sort the Hector distribution
   sorted_distribution <- sort(hector_distribution)
@@ -191,13 +223,161 @@ for (scenario_term in names(ipcc_data_test)) {
   median_percentile <- ecdf_function(median_ci)
   upper_percentile <- ecdf_function(upper_ci)
   
-  # Print the percentiles for this scenario and term length
-  cat("Scenario:", scenario_term, "\n")
-  cat("Lower CI (", lower_ci, ") is at approximately", round(lower_percentile * 100, 2), "percentile\n")
-  cat("Median CI (", median_ci, ") is at approximately", round(median_percentile * 100, 2), "percentile\n")
-  cat("Upper CI (", upper_ci, ") is at approximately", round(upper_percentile * 100, 2), "percentile\n")
+  # Return a list with the results for this scenario
+  return(list(
+    scenario = scenario_term,
+    lower_percentile = round(lower_percentile * 100, 2),
+    median_percentile = round(median_percentile * 100, 2),
+    upper_percentile = round(upper_percentile * 100, 2)
+  ))
+})
+
+# Print the results
+for (result in percentiles_list) {
+  cat("Scenario:", result$scenario, "\n")
+  cat("Lower CI is at approximately", result$lower_percentile, "percentile\n")
+  cat("Median CI is at approximately", result$median_percentile, "percentile\n")
+  cat("Upper CI is at approximately", result$upper_percentile, "percentile\n")
   cat("\n") # To separate results for clarity
 }
 ```
+
+## Score Ensembles
+
+Use scoring function in utils to score each ensemble against historical data:
+```{r}
+# source criterion and scoring 
+source("set-up/criterion_scoring_set_up.R")
+
+# Normalize result to 1850-1900 
+result_normalized <- lapply(model_result, function(df) {
+  
+  # normalize result
+  result_normalized <- normalize_to_reference(df, reference_start = 1850, reference_end = 1900)
+  
+  return(result_normalized)
+})
+  
+# calculate scores
+scores <- lapply(names(result_normalized), function(scenario_name) {
+  
+  df <- result_normalized[[scenario_name]]
+  
+  # score results
+  scores <- score_model(df)
+  
+  scores$scenario <- scenario_name
+  
+  return(scores)
+  
+})
+
+score_df <- do.call(rbind, scores)
+```
+
+```{r}
+# Sort the entire dataset by mc_weight in descending order and get the 5000th largest weight
+threshold_weight <- score_df %>%
+  arrange(desc(mc_weight)) %>%
+  slice(5000) %>%
+  pull(mc_weight)  # Extract the mc_weight value at the 5000th position
+
+# Create the plot
+ecdf_plot <- ggplot(score_df, aes(x = mc_weight)) +
+  geom_point(aes(color = scenario), stat = "ecdf", size = 1) +  # ECDF plot
+  geom_vline(xintercept = threshold_weight, linetype = "dashed", color = "red", size = 1) +  
+  scale_x_continuous(limits = c(0, 1e-4)) + 
+  labs(x = "MC Weight", y = "ECDF", title = "ECDF of Ensemble Weights with Top 5000 Threshold") +
+  facet_wrap(~scenario) +
+  theme_light() +
+  theme(legend.position = "none")
+ggsave("figures/ecdf_plot.png", ecdf_plot, width = 10, units = "in")
+
+```
+
+
+## Subsampling strategy 
+
+```{r}
+# Reshape data
+metrics_df_wide <- metrics_df %>%
+  pivot_wider(
+    names_from = term_length, 
+    values_from = metric_result
+  )
+
+sample_fxn <- function(df, n = 1000, num_reps = 100) {
+  
+  # Split the data frame by 'scenario'
+  split_df <- split(df, df$scenario)
+  
+  # Use lapply to repeat the sampling 100 times for each scenario
+  repeated_samples <- lapply(split_df, function(scenario_df) {
+    
+    # Use replicate to repeat the sampling process 'num_reps' times
+    samples_list <- replicate(num_reps, {
+      # Sample row indices (instead of sampling the entire data frame)
+      sampled_indices <- sample(nrow(scenario_df), size = n, replace = F)
+      
+      # Subset the data frame by the sampled indices
+      sampled_data <- scenario_df[sampled_indices, ]
+      
+      return(sampled_data)
+    }, simplify = FALSE)  # Keep the result as a list of data frames
+    
+    return(samples_list)
+  })
+  
+  # Return the list of repeated sampled data frames
+  return(repeated_samples)
+}
+
+# test the call
+sample_fxn_test <- sample_fxn(metrics_df_wide, n = 5000, num_reps = 500)
+
+```
+
+
+Compute stats
+```{r}
+# Function to compute quantiles for the specified columns
+compute_quantiles_for_columns <- function(sampled_data, cols = c('2021-2040', '2041-2060', '2081-2100'), probs = c(0.05, 0.5, 0.95)) {
+  
+  # Extract the specified columns from the sampled data
+  sampled_columns <- sampled_data[, cols, drop = FALSE]
+  
+  # Compute quantiles for each column
+  quantiles_result <- sapply(sampled_columns, function(col) {
+    quantile(col, probs = probs, na.rm = TRUE)  # Compute the quantiles, removing NAs if any
+  })
+  
+  return(quantiles_result)
+}
+
+# Now, apply this function to the repeated samples
+compute_quantiles_for_repeated_samples <- function(repeated_samples, cols = c('2021-2040', '2041-2060', '2081-2100'), probs = c(0.05, 0.5, 0.95)) {
+  
+  # Loop over the repeated samples (top level: scenarios)
+  quantiles_all_scenarios <- lapply(repeated_samples, function(scenario_samples) {
+    
+    # Loop over each repetition for the current scenario (secondary level: repetitions)
+    scenario_quantiles <- lapply(scenario_samples, function(sampled_data) {
+      
+      # Compute quantiles for the current sample
+      compute_quantiles_for_columns(sampled_data, cols, probs)
+    })
+    
+    return(scenario_quantiles)
+  })
+  
+  return(quantiles_all_scenarios)
+}
+
+# Example usage:
+# Assuming repeated_samples_result contains the repeated samples for each scenario
+quantiles_result <- compute_quantiles_for_repeated_samples(sample_fxn_test)
+
+```
+
 
 
