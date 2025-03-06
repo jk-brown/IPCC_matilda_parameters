@@ -61,7 +61,6 @@ gsat_data_normalized <- lapply(gsat_data, function(df) {
   
 }) 
 
-rm(result)
 ```
 
 # Compute warming metrics
@@ -136,6 +135,11 @@ warming_quantiles_hector <- metrics_df %>%
 source("data/ipcc_data/ipcc_warming_data.R")
 IPCC_data <- subset(IPCC_data, name == "WG1 Assessed Range")
 
+# Load the IPCC dataset (modify if needed)
+target_IPCC_quantiles_df <- IPCC_data %>%
+  rename(year_range = metric_criterion, low = lower_ci, high = upper_ci) %>%
+  select(scenario, year_range, low, median, high) # Keep only necessary columns
+
 ```
 
 For one scenario-term combination find in what percentile the IPCC value exists in the Hector distribution:
@@ -164,8 +168,8 @@ cat("The value", value_to_find, "is at approximately", round(percentile_of_value
 ```
 testing across all scenario-term combinations:
 ```{r}
-# # split IPCC by scenario and term length
-# ipcc_data_test <- split(IPCC_data, list(IPCC_data$scenario, IPCC_data$metric_criterion))
+# split IPCC by scenario and term length
+ipcc_data_test <- split(IPCC_data, list(IPCC_data$scenario, IPCC_data$metric_criterion))
 # 
 # # Iterate through each item in the ipcc_data_test list
 # for (scenario_term in names(ipcc_data_test)) {
@@ -333,10 +337,9 @@ sample_fxn <- function(df, n = 1000, num_reps = 100) {
 }
 
 # test the call
-sample_fxn_test <- sample_fxn(metrics_df_wide, n = 5000, num_reps = 500)
+sample_fxn_test <- sample_fxn(metrics_df_wide, n = 2000, num_reps = 500)
 
 ```
-
 
 Compute stats
 ```{r}
@@ -380,4 +383,203 @@ quantiles_result <- compute_quantiles_for_repeated_samples(sample_fxn_test)
 ```
 
 
+## New subsamplign strategy
+
+**NOT WORKING**
+```{r}
+optimized_sample_fxn <- function(df, n = 1000, num_reps = 100, target_quantiles_df) {
+  
+  # Split ensemble data by scenario
+  split_df <- split(df, df$scenario)
+  
+  # Apply sampling separately for each scenario
+  repeated_samples <- lapply(names(split_df), function(scenario) {
+    
+    scenario_df <- split_df[[scenario]]
+    
+    # Extract target quantiles correctly for the scenario
+    target_quantiles <- target_quantiles_df %>%
+      filter(scenario == !!scenario) %>%
+      select(-scenario) %>%  # Fix: Remove extra column
+      column_to_rownames("year_range")  # Ensure year_range is rownames for lookup
+
+    # Repeat sampling process
+    samples_list <- replicate(num_reps, {
+      
+      # Sample n ensemble members randomly
+      sampled_data <- scenario_df %>% sample_n(n, replace = FALSE)
+      
+      # Compute quantiles for the sample
+      sample_quantiles <- sapply(sampled_data[, c('2021-2040', '2041-2060', '2081-2100')], 
+                                 function(col) quantile(col, probs = c(0.05, 0.5, 0.95), na.rm = TRUE))
+      
+      # Convert quantiles to proper format
+      sample_quantiles <- as.data.frame(t(sample_quantiles))  # Transpose so years are rows
+
+      # Debugging: Check if dimensions match
+      if (!all(dim(sample_quantiles) == dim(target_quantiles))) {
+        print("Mismatch detected:")
+        print(dim(sample_quantiles))
+        print(dim(target_quantiles))
+      }
+      
+      # Check if sample aligns with scenario-specific IPCC quantiles
+      if (all(abs(sample_quantiles - target_quantiles) < 0.1)) {
+        return(sampled_data)
+      } else {
+        return(NULL) # Discard and resample
+      }
+      
+    }, simplify = FALSE)
+    
+    # Remove NULL results (failed samples)
+    samples_list <- samples_list[!sapply(samples_list, is.null)]
+    
+    return(samples_list)
+  })
+  
+  return(repeated_samples)
+}
+
+# Run optimized sampling function
+optimized_samples <- optimized_sample_fxn(metrics_df_wide, n = 2000, num_reps = 500, target_quantiles_df = target_IPCC_quantiles_df)
+```
+
+## Simplified structure 
+
+```{r}
+# Reshape data
+metrics_df_wide <- metrics_df %>%
+  pivot_wider(
+    names_from = term_length, 
+    values_from = metric_result
+  )
+
+# Filter metrics_df_wide to SSP1-1.9 and only the 2021-2040 period
+ssp1_df <- metrics_df_wide %>%
+  filter(scenario == "SSP1-1.9") %>%
+  select(run_number, scenario, `2021-2040`)
+
+# Filter target IPCC quantiles for SSP1-1.9 and 2021-2040
+ssp1_ipcc_quantiles <- target_IPCC_quantiles_df %>%
+  filter(scenario == "SSP1-1.9", year_range == "2021-2040") %>%
+  select(low, median, high)
+
+# Print to check
+print(ssp1_df)
+print(ssp1_ipcc_quantiles)
+```
+```{r}
+simplified_sample_fxn <- function(df, n = 1000, num_reps = 100, target_quantiles) {
+  
+  samples_list <- replicate(num_reps, {
+    
+    # Randomly sample n members
+    sampled_data <- df %>% sample_n(n, replace = FALSE)
+    
+    # Compute quantiles for the sample
+    sample_quantiles <- quantile(sampled_data$`2021-2040`, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
+    
+    # Print to debug
+    print("Sampled Quantiles:")
+    print(sample_quantiles)
+    
+    # Check if the sample aligns with target quantiles
+    if (all(abs(sample_quantiles - target_quantiles) < 0.1)) {
+      return(sampled_data)
+    } else {
+      return(NULL) # Discard and resample
+    }
+    
+  }, simplify = FALSE)
+  
+  # Remove NULL results (failed samples)
+  samples_list <- samples_list[!sapply(samples_list, is.null)]
+  
+  return(samples_list)
+}
+
+# Run the function with SSP1-1.9 and 2021-2040 data
+optimized_samples_ssp1 <- simplified_sample_fxn(ssp1_df, n = 1000, num_reps = 100, target_quantiles = ssp1_ipcc_quantiles)
+```
+
+```{r}
+guided_sample_fxn_no_replacement <- function(df, n = 1000, num_reps = 100, target_quantiles, tolerance = 0.2) {
+  
+  # Track ensemble members already used
+  used_indices <- c()
+  
+  samples_list <- replicate(num_reps, {
+    
+    # Exclude previously used samples
+    available_df <- df[!(df$run_number %in% used_indices), ]
+    
+    # If too few members are left, reset available data
+    if (nrow(available_df) < n) {
+      available_df <- df  # Reset and allow re-selection
+      used_indices <<- c()  # Reset used members
+    }
+    
+    # Sample from remaining members without replacement
+    sampled_data <- available_df %>%
+      group_by(bin) %>%
+      sample_n(size = min(n / n_distinct(bin), nrow(available_df)), replace = FALSE) %>%
+      ungroup()
+    
+    # Update used indices
+    used_indices <<- c(used_indices, sampled_data$run_number)
+    
+    # Compute quantiles
+    sample_quantiles <- quantile(sampled_data$`2021-2040`, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
+    
+    # Print debugging info
+    print("Sampled Quantiles:")
+    print(sample_quantiles)
+
+    # Adjust tolerance to ensure enough variation
+    if (all(abs(sample_quantiles - target_quantiles) < tolerance)) {
+      return(sampled_data)
+    } else {
+      return(NULL)
+    }
+    
+  }, simplify = FALSE)
+  
+  # Remove NULL results
+  samples_list <- samples_list[!sapply(samples_list, is.null)]
+  
+  return(samples_list)
+}
+
+# Run the new function
+# # Ensure the bin column is created before running the function
+ssp1_df <- ssp1_df %>%
+  mutate(bin = ntile(`2021-2040`, 10))  # Divide data into 10 bins
+
+# Check if the bin column is added
+print(head(ssp1_df))
+
+optimized_samples_ssp1 <- guided_sample_fxn_no_replacement(ssp1_df, n = 100, num_reps = 50, target_quantiles = ssp1_ipcc_quantiles, tolerance = 0.17)
+
+```
+
+```{r}
+# Compute quantiles for all sampled ensembles
+quantile_results <- lapply(optimized_samples_ssp1, function(sample) {
+  quantiles <- quantile(sample$`2021-2040`, probs = c(0.05, 0.5, 0.95), na.rm = TRUE)
+  
+  # Convert to a data frame for easy storage
+  return(data.frame(
+    lower_5 = quantiles[1],
+    median_50 = quantiles[2],
+    upper_95 = quantiles[3]
+  ))
+})
+
+# Combine into one data frame
+quantile_df <- bind_rows(quantile_results)
+
+# View results
+#print(quantile_df)
+```
 

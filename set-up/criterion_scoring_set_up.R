@@ -42,18 +42,16 @@ ocean_uptake_unc <- 0.4
 
 # Scoring function
 
-score_model <- function(df) {
-  
-  temp_wt <- score_runs(df, criterion_temp, sigma = gmst_unc, score_bayesian)
-  
-  co2_wt <- score_runs(df, criterion_co2_obs(), sigma = co2_unc, score_bayesian)
-  
-  ocean_uptake_wt <- score_runs(df, criterion_ocean_uptake, sigma = ocean_uptake_unc, score_bayesian)
-  
-  score_list <- list(temp_wt, co2_wt, ocean_uptake_wt)
-  
-  mc_score <- multi_criteria_weighting(score_list, criterion_weights = c(0.9, 0.05, 0.05))
-  
-  return(mc_score)
-  
-}
+# score_model <- function(df) {
+#   
+#   temp_wt <- score_runs(df, criterion_temp, score_bayesian)
+#   
+#   co2_wt <- score_runs(df, criterion_co2_obs(), score_bayesian)
+#   
+#   score_list <- list(temp_wt, co2_wt)
+#   
+#   mc_score <- multi_criteria_weighting(score_list, criterion_weights = c(0.9, 0.1))
+#   
+#   return(mc_score)
+#   
+# }
