@@ -1,5 +1,5 @@
 ---
-title: "Finding IPCC Ensemble"
+title: "Computing Warming using High ECS"
 author: "Joe Brown"
 date: "2025-01-29"
 output: html_document

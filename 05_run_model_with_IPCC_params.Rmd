@@ -1,28 +1,32 @@
 ---
-title: "Running the model"
+title: "Re-run Model With IPCC Params"
 author: "Joe Brown"
-date: "2025-03-06"
+date: "2025-03-07"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# Goal
+
+In this document we want to re-run the model with the IPCC parameters and determine if all time periods align wiht IPCC values across all of the SSP scenarios.
+
+## Import Parameters
+
+```{r}
+params <- read.csv("output/parameters/IPCC_params.csv", stringsAsFactors = F)
+  
+params <- params %>% 
+  select(-X, -run_number)
+
 ```
 
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-# Set-up
+# Set up model
 
 Source files in `set-up` folder.
 
 ```{r}
 source("set-up/source_all.R")
-```
 
-# Generate Initial Parameters
+```
 
 Generate initial parameters to be used for model runs.
 
@@ -40,59 +44,43 @@ ini_list <- list("SSP1-1.9" = paste0(ini_dir, "hector_ssp119.ini"),
 
 ```
 
-Build perturbed parameter ensemble:
-```{r}
-# set seed for replication
-set.seed(123)
-
-# set sample size
-n = 5000
-
-# initiate a core using one of the ini files
-param_core <- newcore(ini_list[[3]])
-
-# generate parameters using default sampling
-params <- generate_params(core = param_core, draws = n)
-
-# shutdown the core after generating parameters
-shutdown(param_core)
-```
-
-Sample new ECS distirbution for "low-ECS":
-```{r}
-# sample new low-ECS distribtion
-low_ecs_sample <- rlnorm(n, lognorm(2.7, 0.7)[1], lognorm(2.7, 0.7)[2])
-
-# Add new ECS samples 
-params$ECS <- low_ecs_sample
-
-```
-
-# Save Job
-
-Save initial parameter set:
-```{r}
-params_dir <- here("data", "parameters")
-
-file_name <- "initial_parameters_low_ecs.csv"
-
-write.csv(params, file.path(params_dir, file_name))
-
-```
-
-# Run the model with new "low-ECS" parameters
-
 ## Split parameters into separate jobs
 
 Slit parameters into jobs -- will be a list:
 
 ```{r}
-# splitting params
+# splitting params into chunks for parallelization
+n_chunks <- min(nrow(params), 100)  # Use the smaller of (a fix to previous error)
 
-param_chunks <- split(params, 1:1000)
+split_indices <- rep(1:n_chunks, length.out = nrow(params))  # Evenly assign runs to chunks
+param_chunks <- split(params, split_indices)  # Create the chunks
 
+# Running checks to make sure previous error is resolved
+print("Number of parameter sets in param_chunks:")
+print(length(param_chunks))  # Should match n_chunks
+
+print("Total number of runs across all chunks:")
+print(sum(sapply(param_chunks, nrow)))  # Should match nrow(params)
+
+print("Unique run numbers in param_chunks:")
+print(length(unique(unlist(lapply(param_chunks, function(x) x$run_number)))))  # Should match nrow(params)
 ```
 
+```{r}
+n_chunks <- min(nrow(params), 100)  # Use a reasonable number of chunks
+param_chunks <- split(params, ceiling(seq_along(1:nrow(params)) / (nrow(params) / n_chunks)))
+
+print("Number of parameter sets in param_chunks:")
+print(length(param_chunks))  # Should match `n_chunks`
+
+print("Total number of runs across all chunks:")
+print(sum(sapply(param_chunks, nrow)))  # Should match `nrow(params)`
+
+print("Check for duplication across chunks:")
+all_rows <- do.call(rbind, param_chunks)
+print(nrow(unique(all_rows)))  # Should match `nrow(params)`
+
+```
 ## Set up: Parallel Computing
 
 ```{r}
@@ -101,7 +89,7 @@ source("set-up/parallel_set_up.R")
 
 ```
 
-## Run model using parallel
+### Run model using parallel
 
 ```{r}
 # Run model in parallel mode
@@ -151,9 +139,9 @@ stopCluster(cl)
 ```{r}
 result_dir <- here("output", "model_results")
 
-file_name <- "initial_result_low_ecs.RDS"
+file_name <- "posterior_result_low_ecs.RDS"
 
 saveRDS(result, file.path(result_dir, file_name))
 
+rm(result)
 ```
-

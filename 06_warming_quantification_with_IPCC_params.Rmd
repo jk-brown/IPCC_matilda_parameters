@@ -1,0 +1,162 @@
+---
+title: "Warming quantification using IPCC params"
+author: "Joe Brown"
+date: "2025-03-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load data
+
+Load full result:
+```{r}
+# load result 
+model_result_rerun <- readRDS("output/model_results/posterior_result_low_ecs.RDS")
+
+```
+
+## Set-up 
+
+Source files in `set-up` folder.
+
+```{r}
+source("set-up/source_all.R")
+
+```
+
+## Computing summary stats
+
+```{r, message=FALSE, warning=FALSE}
+## subset to only include the variable of interest
+gsat_data_rerun <- lapply(model_result_rerun, function(df) {  ## Still by-passing historical scoring step.
+  
+  subset_data = subset(df, variable == "global_tas")
+  
+  return(subset_data)
+})
+
+## normalize gsat data 
+gsat_data_rerun_normalized <- lapply(gsat_data_rerun, function(df) {
+  
+  normalize_to_reference(df, reference_start = 1995, reference_end = 2014)
+  
+}) 
+
+## compute summary statistics
+summary_rerun <- lapply(names(gsat_data_rerun_normalized), function(scenario_name) {
+  
+  df <- gsat_data_rerun_normalized[[scenario_name]]
+  
+  summary_wts <- df %>% 
+  group_by(year) %>%
+  summarise(
+    median = quantile(value, probs = 0.50),
+    ci_05 = quantile(value, probs = 0.05),
+    ci_10 = quantile(value, probs = 0.10),
+    ci_33 = quantile(value, probs = 0.33),
+    ci_67 = quantile(value, probs = 0.67),
+    ci_90 = quantile(value, probs = 0.90),
+    ci_95 = quantile(value, probs = 0.95),
+    .groups = "drop"
+  ) %>% 
+  subset(year > 1849 & year < 2101)
+  
+  summary_wts$scenario <- scenario_name
+  
+  return(summary_wts)
+  
+})
+
+names(summary_rerun) <- names(model_result_rerun)
+
+```
+
+## Computing warming results
+
+### Define metrics of interest
+
+We define a warming metric to give us median warming in the year 2100 give the filtered Hector ensemble.
+
+```{r define metric for end of century warming}
+warming_metric <- new_metric(var = "global_tas", years = 2081:2100, op = median)
+  
+```
+
+### Compute warming results 
+
+Using the `metric_calc` function we compute the warming results.
+```{r compute warming metrics}
+warming_results_rerun <- lapply(gsat_data_rerun_normalized, function(df) {
+  
+  metric_result <- metric_calc(df, warming_metric)
+  
+  return(metric_result)
+})
+```
+
+
+
+
+```{r}
+# # initialize metric 
+# long_warming_metric <- new_metric(var = 'global_tas', years = 2081:2100, op = median)
+# mid_warming_metric <- new_metric(var = 'global_tas', years = 2041:2060, op = median)
+# short_warming_metric <- new_metric(var = 'global_tas', years = 2021:2040, op = median)
+# 
+# metric_list <- list('2081-2100' = long_warming_metric, 
+#                     '2041-2060' = mid_warming_metric, 
+#                     '2021-2040' = short_warming_metric)
+# 
+# # compute mid-term warming metrics
+# warming_result <- lapply(names(gsat_data_rerun_normalized), function(scenario_name) {
+#   
+#   # copy gsat data
+#   df <- gsat_data_normalized[[scenario_name]]
+#   
+#   # compute metrics for each term length for current scenario element 
+#   metrics_by_term <- lapply(names(metric_list), function(term_length) {
+# 
+#     # copy metric data
+#     metric <- metric_list[[term_length]]
+#         
+#     # compute metrics
+#     result <- metric_calc(df, metric)
+#     
+#     # add term_length column
+#     result$term_length <- term_length
+#   
+#     return(result)  
+#   })  
+#   
+#   # rbind term_lengths for currrent scenario element
+#   metrics_by_scenario <- do.call(rbind, metrics_by_term)
+#   
+#   # Add column for scenario name
+#   metrics_by_scenario$scenario <- scenario_name
+#   
+#   return(metrics_by_scenario)
+# 
+# })
+# 
+# # bind metric result for all scenarios to one df
+# metrics_df <- do.call(rbind, warming_result)
+
+```
+
+```{r}
+## Wamring median and range
+
+wamring_ranges <- metrics_df %>% 
+  group_by(term_length, scenario) %>% 
+  summarise(
+    lower = quantile(metric_result, probs = c(0.05)), 
+    central = quantile(metric_result, probs = c(0.5)), 
+    upper = quantile(metric_result, probs = c(0.95)),
+  .groups = "drop")
+
+```
+
+
