@@ -12,10 +12,7 @@ In this document we want to re-run the model with the IPCC parameters and determ
 ## Import Parameters
 
 ```{r}
-params <- read.csv("output/parameters/IPCC_params.csv", stringsAsFactors = F)
-  
-params <- params %>% 
-  select(-X, -run_number)
+IPCC_params <- read.csv("output/parameters/IPCC_params.csv", stringsAsFactors = F)
 
 ```
 
@@ -46,41 +43,26 @@ ini_list <- list("SSP1-1.9" = paste0(ini_dir, "hector_ssp119.ini"),
 
 ## Split parameters into separate jobs
 
-Slit parameters into jobs -- will be a list:
+Split parameters into jobs -- will be a list:
 
 ```{r}
-# splitting params into chunks for parallelization
-n_chunks <- min(nrow(params), 100)  # Use the smaller of (a fix to previous error)
-
-split_indices <- rep(1:n_chunks, length.out = nrow(params))  # Evenly assign runs to chunks
-param_chunks <- split(params, split_indices)  # Create the chunks
-
-# Running checks to make sure previous error is resolved
-print("Number of parameter sets in param_chunks:")
-print(length(param_chunks))  # Should match n_chunks
-
-print("Total number of runs across all chunks:")
-print(sum(sapply(param_chunks, nrow)))  # Should match nrow(params)
-
-print("Unique run numbers in param_chunks:")
-print(length(unique(unlist(lapply(param_chunks, function(x) x$run_number)))))  # Should match nrow(params)
-```
-
-```{r}
-n_chunks <- min(nrow(params), 100)  # Use a reasonable number of chunks
-param_chunks <- split(params, ceiling(seq_along(1:nrow(params)) / (nrow(params) / n_chunks)))
+n_chunks <- min(nrow(IPCC_params), 100)  # Use a reasonable number of chunks
+param_chunks <- split(IPCC_params, ceiling(seq_along(1:nrow(IPCC_params)) / (nrow(IPCC_params) / n_chunks)))
 
 print("Number of parameter sets in param_chunks:")
 print(length(param_chunks))  # Should match `n_chunks`
 
 print("Total number of runs across all chunks:")
-print(sum(sapply(param_chunks, nrow)))  # Should match `nrow(params)`
+print(sum(sapply(param_chunks, nrow)))  # Should match `nrow(IPCC_params)`
 
 print("Check for duplication across chunks:")
 all_rows <- do.call(rbind, param_chunks)
-print(nrow(unique(all_rows)))  # Should match `nrow(params)`
+print(nrow(unique(all_rows)))  # Should match `nrow(IPCC_params)`
 
 ```
+
+Parameter chunking to ensure the 4681 filtered runs are evenly distributed without duplication or omission, preventing unintended recycling of parameters and ensuring the rerun accurately reflects the IPCC-aligned ensemble.
+
 ## Set up: Parallel Computing
 
 ```{r}
@@ -93,6 +75,7 @@ source("set-up/parallel_set_up.R")
 
 ```{r}
 # Run model in parallel mode
+start <- Sys.time()
 result <- parLapply(cl, names(ini_list), function(scenario_name) {
   
   # store data in scenario object
@@ -132,6 +115,11 @@ result <- parLapply(cl, names(ini_list), function(scenario_name) {
 names(result) <- names (ini_list)
 
 stopCluster(cl)
+
+end <- Sys.time()
+
+# Print elapsed time
+print(end - start)
 ```
 
 ## Save job
@@ -139,7 +127,7 @@ stopCluster(cl)
 ```{r}
 result_dir <- here("output", "model_results")
 
-file_name <- "posterior_result_low_ecs.RDS"
+file_name <- "update_posterior_result_low_ecs.RDS"
 
 saveRDS(result, file.path(result_dir, file_name))
 

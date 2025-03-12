@@ -14,8 +14,14 @@ knitr::opts_chunk$set(echo = TRUE)
 Load full result:
 ```{r}
 # load result 
-model_result_rerun <- readRDS("output/model_results/posterior_result_low_ecs.RDS")
+model_result_rerun <- readRDS("output/model_results/update_posterior_result_low_ecs.RDS")
 
+model_result_rerun <- lapply(model_result_rerun, function(df){
+  
+  no_NAs <- na.omit(df)
+  
+  return(no_NAs)
+  })
 ```
 
 ## Set-up 
@@ -97,7 +103,23 @@ warming_results_rerun <- lapply(gsat_data_rerun_normalized, function(df) {
 })
 ```
 
+*The above code is still not giving me the correct quantile results that should match the values in the Rmd `04_searching_for_IPCC_aligned_ensemble`.
 
+proof:
+```{r}
+quantile(warming_results_rerun$`SSP2-4.5`$metric_result, probs = c(0.05, 0.5, 0.95))
+```
+
+These should equal the filtered quantiles from:
+
+Original Median: 1.730989 
+Original 5th Percentile: 1.098986 
+Original 95th Percentile: 2.603079 
+Filtered Median: 1.749183 
+Filtered 5th Percentile: 1.204623 
+Filtered 95th Percentile: 2.528252 
+
+But instead it is matching the original quantiles. Therefore something is going wrong between when I calculate the filtered runs and when I compute the "posterior" quantiles.
 
 
 ```{r}

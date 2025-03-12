@@ -38,7 +38,7 @@ ini_list <- list("SSP1-1.9" = paste0(ini_dir, "hector_ssp119.ini"),
 Build perturbed parameter ensemble:
 ```{r}
 # set seed for replication
-set.seed(123)
+set.seed(444)
 
 # set sample size
 n = 5000
@@ -49,8 +49,6 @@ param_core <- newcore(ini_list[[3]])
 # generate parameters using default sampling
 params <- generate_params(core = param_core, draws = n)
 
-# shutdown the core after generating parameters
-shutdown(param_core)
 ```
 
 Sample new ECS distribution for "low-ECS":
@@ -63,6 +61,14 @@ params$ECS <- low_ecs_sample
 
 ```
 
+Check ECS histogram to see what this distribution looks like:
+
+```{r}
+summary(params$ECS)  # Check distribution stats
+
+hist(params$ECS, breaks = 50, main = "Histogram of Low-ECS Samples")  # Visualize
+```
+
 # Save Job
 
 Save initial parameter set:
@@ -71,7 +77,7 @@ params_dir <- here("data", "parameters")
 
 file_name <- "initial_parameters_low_ecs.csv"
 
-write.csv(params, file.path(params_dir, file_name))
+write.csv(params, file.path(params_dir, file_name), row.names = FALSE)
 
 ```
 
@@ -84,7 +90,7 @@ Slit parameters into jobs -- will be a list:
 ```{r}
 # splitting params
 
-param_chunks <- split(params, 1:1000)
+param_chunks <- split(params, 1:100)
 
 ```
 
@@ -92,7 +98,21 @@ param_chunks <- split(params, 1:1000)
 
 ```{r}
 
-source("set-up/parallel_set_up.R")
+# Set-up: Parallel computing 
+
+# number of cores to put in cluster
+cpu_cores <- detectCores() - 1
+
+# intialize cluster
+cl <- makeCluster(cpu_cores)
+
+# export functions and objects needed to run model
+exp <- c("param_chunks", 
+         "ini_list", 
+         "newcore", 
+         "iterate_model")
+
+clusterExport(cl, exp)
 
 ```
 
@@ -102,9 +122,10 @@ source("set-up/parallel_set_up.R")
 # Run model in parallel mode
 result <- parLapply(cl, names(ini_list), function(scenario_name) {
   
+  library(hector)  # or any required package
+  
   # store data in scenario object
   scenario <- ini_list[[scenario_name]]
-  
   # initialize core with the names of the current scenario
   core <- newcore(scenario, name = scenario_name)
   
@@ -120,18 +141,7 @@ result <- parLapply(cl, names(ini_list), function(scenario_name) {
                                 "ocean_uptake"))
   })
   
-  # ensure correct run_number from one chunk to the next
-  for (i in 2:length(result_list)) {
-    
-    max_run_number <- max(result_list[[i - 1]]$run_number)
-    
-    result_list[[i]]$run_number <- result_list[[i]]$run_number + max_run_number
-  }
-  
-  # bind chunked results into a df for each scenario
-  result_return <- do.call(rbind, result_list)
-  
-  return(result_return)
+  return(result_list)
   
 })
 
@@ -141,6 +151,81 @@ names(result) <- names (ini_list)
 stopCluster(cl)
 ```
 
+```{r}
+# ensure correct run_number from one chunk to the next
+# Loop over each scenario in result
+for (scenario_name in names(result)) {
+  
+  scenario_list <- result[[scenario_name]]  # Extract the list of 100 chunks
+  max_run_number <- 0  # Start counting from 1
+  
+  for (i in seq_along(scenario_list)) {
+    scenario_list[[i]]$run_number <- scenario_list[[i]]$run_number + max_run_number
+    max_run_number <- max(scenario_list[[i]]$run_number)  # Update max for next chunk
+  }
+  
+  # Store the updated scenario back in result
+  result[[scenario_name]] <- scenario_list
+}
+```
+
+Find NAs:
+```{r}
+## Find NAs
+# Loop over each scenario
+ for (scenario_name in names(result)) {
+     
+     scenario_list <- result[[scenario_name]]  # Extract list of 100 chunks
+     
+     # Extract run numbers where there are NAs
+     na_run_numbers <- unlist(lapply(scenario_list, function(df) {
+         df$run_number[rowSums(is.na(df)) > 0]  # Get run_number where any column has NA
+     }))
+     
+     # Store results for this scenario
+     if (length(na_run_numbers) > 0) {
+         na_runs[[scenario_name]] <- unique(na_run_numbers)  # Store only unique run numbers
+     }
+ }
+
+# Print summary of NA runs
+ print(na_runs)
+```
+
+Bind results into a new `model_result` object:
+```{r}
+# bind chunked results into a df for each scenario
+model_result <- lapply(result, function(scenario) {
+  
+  bound_result <- do.call(rbind, scenario)
+
+  return(bound_result)
+
+})
+
+```
+
+## Testing removing NAs from all scenarios -- this means any runs with NAs in the higher SSPs will be removed from all scenario runs.
+```{r}
+# Step 1: Identify all run_numbers with NA in any scenario
+na_run_numbers <- unique(unlist(lapply(model_result, function(df) {
+  df$run_number[rowSums(is.na(df)) > 0]  # Extract run numbers with NA
+})))
+
+# Step 2: Remove these run_numbers from all scenario data frames
+model_result <- lapply(model_result, function(df) {
+  df[!df$run_number %in% na_run_numbers, ]  # Keep only valid runs
+})
+
+# Print the number of removed runs
+cat("Removed", length(na_run_numbers), "runs due to NA values across all scenarios.\n")
+
+# All scenarios should have the same number of resords now
+# Check that all scenarios have the same number of runs
+sapply(model_result, nrow)
+
+```
+
 ## Save job
 
 ```{r}
@@ -148,7 +233,8 @@ result_dir <- here("output", "model_results")
 
 file_name <- "initial_result_low_ecs.RDS"
 
-saveRDS(result, file.path(result_dir, file_name))
+saveRDS(model_result, file.path(result_dir, file_name))
 
 ```
+
 

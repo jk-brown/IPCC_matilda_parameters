@@ -31,66 +31,66 @@ Here we begin with the large ensemble of runs should be around 15k runs.
 source("set-up/source_all.R")
 
 model_result <- readRDS("output/model_results/initial_result_low_ecs.RDS")
-```
 
+```
 
 ## Skip scoring to see if that helps
 ### Scoring model runs
 
-```{r}
-model_scores <- lapply(model_result, function(df) {
-  
-  temp_wt <- score_runs(df, criterion_temp, score_ramp, w1 = 0.1, w2 = 0.5)
-  temp_wt <- na.omit(temp_wt)
-  
-  co2_wt <- score_runs(df, criterion_co2_obs(), score_ramp, w1 = 3, w2 = 15)
-  co2_wt <- na.omit(co2_wt)
-  
-  ocean_uptake <- score_runs(df, criterion_ocean_uptake, score_ramp, w1 = 0.1, w2 = 1.0)
-  ocean_uptake <- na.omit(ocean_uptake)
-  
-  score_list <- list(temp_wt, co2_wt, ocean_uptake)
-  
-  mc_score <- multi_criteria_weighting(score_list)
-  
-  return(mc_score)
-  
-})
-```
+<!-- ```{r} -->
+<!-- model_scores <- lapply(model_result, function(df) { -->
 
-### Filtering top ensembles
+<!--   temp_wt <- score_runs(df, criterion_temp, score_ramp, w1 = 0.1, w2 = 0.5) -->
+<!--   temp_wt <- na.omit(temp_wt) -->
 
-```{r}
+<!--   co2_wt <- score_runs(df, criterion_co2_obs(), score_ramp, w1 = 3, w2 = 15) -->
+<!--   co2_wt <- na.omit(co2_wt) -->
 
-top_scores <- lapply(model_scores, function(df){
-  
-  top_percentile <- quantile(df$mc_weight, 0.20)
-  
-  top_scores_magicc <- df %>%
-  
-    filter(mc_weight >= top_percentile)
+<!--   ocean_uptake <- score_runs(df, criterion_ocean_uptake, score_ramp, w1 = 0.1, w2 = 1.0) -->
+<!--   ocean_uptake <- na.omit(ocean_uptake) -->
 
-})
+<!--   score_list <- list(temp_wt, co2_wt, ocean_uptake) -->
 
-```
+<!--   mc_score <- multi_criteria_weighting(score_list) -->
 
-This result will leave us with the top ~2000 performing ensemble members based on their multi-criteria score.
+<!--   return(mc_score) -->
 
-Merge model weights with model results (for plotting later):
-```{r}
-weighted_ensemble <- Map(function(a, b) {
-  
-  merged <- merge(a, b, by = "run_number")
-  
-  return(merged)
-  
-}, model_result, top_scores)
+<!-- }) -->
+<!-- ``` -->
 
-```
+<!-- ### Filtering top ensembles -->
+
+<!-- ```{r} -->
+
+<!-- top_scores <- lapply(model_scores, function(df){ -->
+
+<!--   top_percentile <- quantile(df$mc_weight, 0.20) -->
+
+<!--   top_scores_magicc <- df %>% -->
+
+<!--     filter(mc_weight >= top_percentile) -->
+
+<!-- }) -->
+
+<!-- ``` -->
+
+<!-- This result will leave us with the top ~2000 performing ensemble members based on their multi-criteria score. -->
+
+<!-- Merge model weights with model results (for plotting later): -->
+<!-- ```{r} -->
+<!-- weighted_ensemble <- Map(function(a, b) { -->
+
+<!--   merged <- merge(a, b, by = "run_number") -->
+
+<!--   return(merged) -->
+
+<!-- }, model_result, top_scores) -->
+
+<!-- ``` -->
 
 *Pick-up here since we are currently skipping scoring*
 
-### Computing summary stats for the initial low-ecs ensemble 
+## Computing summary stats for the initial low-ecs ensemble 
 ```{r, message=FALSE, warning=FALSE}
 ## subset to only include the variable of interest
 gsat_data_weighted <- lapply(model_result, function(df) {  ##If by-passing the scoring/filtering step - change to model_result
@@ -103,36 +103,37 @@ gsat_data_weighted <- lapply(model_result, function(df) {  ##If by-passing the s
 ## normalize gsat data 
 gsat_data_normalized <- lapply(gsat_data_weighted, function(df) {
   
-  normalize_to_reference(df, reference_start = 1995, reference_end = 2014)
+  normalized <- normalize_to_reference(df, reference_start = 1995, reference_end = 2014)
   
+  return(normalized)
 }) 
 
 ## compute summary statistics
-summary_weighting <- lapply(names(gsat_data_normalized), function(scenario_name) {
-  
-  df <- gsat_data_normalized[[scenario_name]]
-  
-  summary_wts <- df %>% 
-  group_by(year) %>%
-  summarise(
-    median = quantile(value, probs = 0.50),
-    ci_05 = quantile(value, probs = 0.05),
-    ci_10 = quantile(value, probs = 0.10),
-    ci_33 = quantile(value, probs = 0.33),
-    ci_67 = quantile(value, probs = 0.67),
-    ci_90 = quantile(value, probs = 0.90),
-    ci_95 = quantile(value, probs = 0.95),
-    .groups = "drop"
-  ) %>% 
-  subset(year > 1849 & year < 2101)
-  
-  summary_wts$scenario <- scenario_name
-  
-  return(summary_wts)
-  
-})
-
-names(summary_weighting) <- names(model_result)
+# summary_weighting <- lapply(names(gsat_data_normalized), function(scenario_name) {
+#   
+#   df <- gsat_data_normalized[[scenario_name]]
+#   
+#   summary_wts <- df %>% 
+#   group_by(year) %>%
+#   summarise(
+#     median = quantile(value, probs = 0.50),
+#     ci_05 = quantile(value, probs = 0.05),
+#     ci_10 = quantile(value, probs = 0.10),
+#     ci_33 = quantile(value, probs = 0.33),
+#     ci_67 = quantile(value, probs = 0.67),
+#     ci_90 = quantile(value, probs = 0.90),
+#     ci_95 = quantile(value, probs = 0.95),
+#     .groups = "drop"
+#   ) %>% 
+#   subset(year > 1849 & year < 2101)
+#   
+#   summary_wts$scenario <- scenario_name
+#   
+#   return(summary_wts)
+#   
+# })
+# 
+# names(summary_weighting) <- names(model_result)
 
 ```
 
@@ -141,7 +142,7 @@ names(summary_weighting) <- names(model_result)
 We define a warming metric to give us median warming in the year 2100 give the filtered Hector ensemble.
 
 ```{r define metric for end of century warming}
-warming_metric <- new_metric(var = "global_tas", years = 2081:2100, op = median)
+warming_metric <- new_metric(var = "global_tas", years = 2041:2060, op = median)
   
 ```
 
@@ -157,21 +158,37 @@ warming_results <- lapply(gsat_data_normalized, function(df) {
 })
 ```
 
+## What is the size of the ensemble before filtering for each of the SSP scenarios:
+
+```{r}
+# Check the number of runs in each SSP
+run_counts <- sapply(warming_results, function(df) nrow(df))
+
+# Print counts to inspect
+print(run_counts)
+
+# Identify the SSP with the smallest ensemble size
+min_ssp <- names(which.min(run_counts))
+cat("Using", min_ssp, "as the base SSP for filtering.\n")
+
+```
+Certain precautions were taken in `03_run_model_with_low_ecs.Rmd` to make sure that all scenarios have the same number of runs.
+
 #### Filter to align with IPCC
 
 Here we are filtering and comparing against IPCC to determine how much filtering (and from which side of the distribution) will give us an ensemble that aligns with the IPCC warming range.
 
 ```{r}
-# Extract the specific dataset for SSP1-1.9
+# Extract the specific data set for SSP2-4.5
 ssp_data <- warming_results$`SSP2-4.5`
 
 # Define IPCC Target Values for SSP1-1.9 (update these based on Table 7.SM.4)
-ipcc_median <- 1.81  # Replace with IPCC mean for SSP1-1.9
-ipcc_lower <- 1.24  # 5th percentile
-ipcc_upper <- 2.59  # 95th percentile
+ipcc_median <- 1.12  # Replace with IPCC median for SSP2-4.5
+ipcc_lower <- 0.78  # 5th percentile
+ipcc_upper <- 1.57  # 95th percentile
 
 # Step 1: Compute full ensemble statistics
-ensemble_median <- median(ssp_data$metric_result)
+ensemble_median <- quantile(ssp_data$metric_result, 0.5)
 ensemble_lower <- quantile(ssp_data$metric_result, 0.05)
 ensemble_upper <- quantile(ssp_data$metric_result, 0.95)
 
@@ -182,7 +199,7 @@ cat("Original 95th Percentile:", ensemble_upper, "\n")
 
 # Step 2: Filter ensemble members within the IPCC range
 filtered_df <- ssp_data %>%
-  filter(metric_result >= ipcc_lower - 0.15, metric_result <= ipcc_upper + 0.3) # adjust the strictness of the filtering here
+  filter(metric_result >= ipcc_lower - 0.2, metric_result <= ipcc_upper - 0.05) # adjust the strictness of the filtering here
 
 # Step 3: Adjust selection to match median
 # If the filtered subset still has a different median, we refine the selection
@@ -200,24 +217,73 @@ cat("Filtered 5th Percentile:", filtered_lower, "\n")
 cat("Filtered 95th Percentile:", filtered_upper, "\n")
 
 ```
-# Filtering other SSPs
+
+Now that we have some filtered ensemble that generally aligns with IPCC, extract the run_number from the selected subset.
+
+```{r}
+# Extract run numbers from the selected subset
+ipcc_aligned_run_numbers <- selected_subset$run_number
+
+# Print number of selected runs
+cat("Number of selected run numbers:", length(ipcc_aligned_run_numbers), "\n")
+
+```
+Now that we have these run numbers selected, we want to filter all SSPs using these run_numbers.
+
+Ensure all SSPs use only these identified IPCC-aligned runs: 
+```{r}
+
+# Filter each SSP using only the IPCC-aligned run numbers
+filtered_results <- lapply(warming_results, function(df) {
+  
+  df %>% filter(run_number %in% ipcc_aligned_run_numbers)
+
+  })
+
+# Check if all SSPs now have the same number of runs
+filtered_run_counts <- sapply(filtered_results, nrow)
+
+print(filtered_run_counts)  # Should be identical across all SSPs
+
+```
+
+### Can skip because all scenarios had the same number of runs to begin with.
+Okay unfortunately, even though we used the IPCC-aligned runs, all SSPs still do not have the exact same run_numbers. So we need to identify what the strict common run_numbers are:
+
+```{r}
+# Find run numbers that exist in ALL SSPs and store as a vector
+strict_common_run_vector <- Reduce(intersect, 
+                                   lapply(filtered_results, function(df) df$run_number))
+
+strict_common_run_numbers <- data.frame(run_number = strict_common_run_vector)
+
+# Print how many runs are in the strict common set
+cat("Number of runs in strict common set:", length(strict_common_run_vector), "\n")
+
+```
+
+Now that the strict common runs are identified -- 4453 total runs across all SSP scenarios, we will re-filter all SSPs to match exactly:
+
+```{r}
+# Apply strict filtering so all SSPs have the exact same runs
+filtered_results <- lapply(filtered_results, function(df) {
+  
+  df %>% filter(run_number %in% strict_common_run_vector)
+  
+})
+
+# Verify final run counts
+final_run_counts <- sapply(filtered_results, nrow)
+print(final_run_counts)  # All numbers should now be identical
+
+```
+
+
+## Filtering other SSPs
 
 This is a test to see if the ensemble that produces a good fit for SSP2-4.5 will produce a good fit for the other SSPs. 
 
 I am using the run_numbers for the filtered ensemble from SSP245 to filter other SSPs and then checking their quantiles against IPCC values.
-
-```{r}
-# Extract run numbers from the SSP2-4.5 filtered subset
-ssp2_filtered_run_numbers <- selected_subset$run_number  
-
-# Apply filtering across all SSP scenarios in warming_results
-filtered_results <- lapply(warming_results, function(df) {
-  
-  df %>% filter(run_number %in% ssp2_filtered_run_numbers)
-  
-})
-
-```
 
 Check to see how the other SSPs align with IPCC when we use this subset of ensembles.
 
@@ -228,21 +294,36 @@ lapply(filtered_results, function(df) {
   
 })
 ```
-Okay looking good, now merge these run_numbers with the parameters:
-```{r}
-params$run_number <- 1:nrow(params)
 
-IPCC_params <- params %>% 
-  filter(run_number %in% ssp2_filtered_run_numbers)
+Now that we have a semi-final set of runs that mostly reproduce WGI assessed warming values, we can filter for parameter sets that result in those ensmeble members.
+
+```{r}
+init_params <- read.csv("data/parameters/initial_parameters_low_ecs.csv", stringsAsFactors = F)
+
+init_params$run_number <- 1:nrow(init_params)
+
+# Filter the parameter set to match the strict common run numbers
+IPCC_params <- init_params %>% 
+  filter(run_number %in% ipcc_aligned_run_numbers)
+```
+
+Check:
+```{r}
+# Verify that the number of parameter sets matches the filtered ensemble
+print(nrow(IPCC_params))  # Should be the same as filtered_results count
+
+print(sapply(filtered_results, nrow))
 ```
 
 Save these "IPCC" parameters so that we can use them to run a test to see is importing them to run hector will produce the IPCC range.
 
 ```{r}
-write.csv(IPCC_params, "output/parameters/IPCC_params.csv")
+IPCC_params <- IPCC_params %>% 
+  select(-run_number)
+write.csv(IPCC_params, "output/parameters/IPCC_params.csv", row.names = F)
 ```
 
-## We need some visualizations for proof!
+## Visualizations
 
 data prep:
 ```{r}
@@ -252,7 +333,7 @@ gsat_normalized_df <- subset(gsat_normalized_df, year > 1994)
 
 filtered_gsat_data <- lapply(gsat_data_normalized, function(df) {
   
-  df %>% filter(run_number %in% ssp2_filtered_run_numbers)
+  df %>% filter(run_number %in% ipcc_aligned_run_numbers)
   
 })
 
@@ -263,22 +344,84 @@ filtered_gsat_df <- subset(filtered_gsat_df, year > 1994)
 
 ```{r}
 
-full_ensemble <- ggplot() +
-  
-  geom_line(data = gsat_normalized_df, 
-            aes(x = year, y = value, group = run_number), 
-            color = "dodgerblue", alpha = 0.5) +
-
-  geom_line(data = filtered_gsat_df, 
-            aes(x = year, y = value, group = run_number), 
-            color = "salmon", alpha = 0.3) +
-  
-    theme_light() +
-    facet_wrap(~scenario, scales = "free_y")
-
-full_ensemble
+# full_ensemble <- ggplot() +
+#   
+#   geom_line(data = gsat_normalized_df, 
+#             aes(x = year, y = value, group = run_number), 
+#             color = "dodgerblue", alpha = 0.5) +
+# 
+#   geom_line(data = filtered_gsat_df, 
+#             aes(x = year, y = value, group = run_number), 
+#             color = "salmon", alpha = 0.3) +
+#   
+#     theme_light() +
+#     facet_wrap(~scenario, scales = "free_y")
+# 
+# full_ensemble
 
 ```
+
+
+### Computing values for full AR6 assessed warming range table:
+```{r}
+# initialize metric
+long_warming_metric <- new_metric(var = 'global_tas', years = 2081:2100, op = median)
+mid_warming_metric <- new_metric(var = 'global_tas', years = 2041:2060, op = median)
+short_warming_metric <- new_metric(var = 'global_tas', years = 2021:2040, op = median)
+
+metric_list <- list('2081-2100' = long_warming_metric,
+                    '2041-2060' = mid_warming_metric,
+                    '2021-2040' = short_warming_metric)
+
+# Compute warming metrics using filtered ensemble
+warming_result_post <- lapply(names(filtered_gsat_data), function(scenario_name) {
+   
+   # Copy gsat data (filtered)
+   df <- filtered_gsat_data[[scenario_name]]
+   
+   # Compute metrics for each term length for the current scenario
+   metrics_by_term <- lapply(names(metric_list), function(term_length) {
+
+     # Copy metric data
+     metric <- metric_list[[term_length]]
+
+     # Compute metrics
+     result <- metric_calc(df, metric)
+
+     # Add term_length column
+     result$term_length <- term_length
+
+     return(result)
+   })
+
+   # rbind term_lengths for the current scenario
+   metrics_by_scenario <- do.call(rbind, metrics_by_term)
+
+   # Add column for scenario name
+   metrics_by_scenario$scenario <- scenario_name
+
+   return(metrics_by_scenario)
+})
+
+# Bind metric results for all scenarios into one data frame
+TEST_metrics_df <- do.call(rbind, warming_result_post)
+```
+
+Compute warming summary
+```{r}
+warming_summary <- TEST_metrics_df %>% 
+  group_by(scenario, term_length) %>% 
+  summarise(
+    lower = round(quantile(metric_result, 0.05), 2), 
+    central = round(median(metric_result), 2), 
+    upper = round(quantile(metric_result, 0.95), 2),
+  .groups = "drop")
+
+write.csv(warming_summary, "output/summary_results/warming_summary.csv")
+
+```
+
+
 Not super informative other than to show that the filtering step largely trims ensemble members from the extremes. But, this is done strategically on my part to trim the distribution asymmetrically to try and get the best alignment with IPCC.
 
 *This figure primarily illustrates how the filtering step trims ensemble members, particularly at the extremes of the distribution. The filtering is applied asymmetrically to optimize alignment with IPCC projections, ensuring that the retained subset better matches the expected warming ranges while preserving internal variability.*

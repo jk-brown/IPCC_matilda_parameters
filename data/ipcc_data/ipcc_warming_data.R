@@ -1,4 +1,4 @@
-# IPCC data 
+# IPCC data data frame
 IPCC_data <- data.frame(
   scenario = as.factor(rep(c("SSP1-1.9", "SSP1-2.6" ,"SSP2-4.5", "SSP3-7.0", "SSP5-8.5"), each = 1, times = 3)),
   metric_criterion = as.factor(rep(c("2021-2040", "2041-2060", "2081-2100"), each = 5)),
@@ -12,3 +12,4 @@ IPCC_data <- data.frame(
                0.94, 0.96, 0.92, 0.91, 1.08, 1.14, 1.38, 1.59, 1.72, 2.17, 1.00, 1.49, 2.63, 3.72, 4.89,
                0.88, 0.89, 0.89, 0.92, 1.06, 1.15, 1.35, 1.60, 1.77, 2.16, 0.99, 1.49, 2.67, 3.97, 5.16),
   name = rep(c("WG1 Assessed Range", "FaIR v1.6.2", "MAGICC7"), each = 15))
+
