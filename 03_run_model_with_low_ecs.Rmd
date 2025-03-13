@@ -41,7 +41,7 @@ Build perturbed parameter ensemble:
 set.seed(444)
 
 # set sample size
-n = 5000
+n = 7500
 
 # initiate a core using one of the ini files
 param_core <- newcore(ini_list[[3]])
@@ -172,6 +172,9 @@ for (scenario_name in names(result)) {
 Find NAs:
 ```{r}
 ## Find NAs
+
+na_runs <- list()  # Initialize empty list
+
 # Loop over each scenario
  for (scenario_name in names(result)) {
      
@@ -211,6 +214,8 @@ model_result <- lapply(result, function(scenario) {
 na_run_numbers <- unique(unlist(lapply(model_result, function(df) {
   df$run_number[rowSums(is.na(df)) > 0]  # Extract run numbers with NA
 })))
+
+print(na_run_numbers)
 
 # Step 2: Remove these run_numbers from all scenario data frames
 model_result <- lapply(model_result, function(df) {
