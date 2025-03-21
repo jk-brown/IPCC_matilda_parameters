@@ -225,7 +225,7 @@ model_result <- lapply(model_result, function(df) {
 # Print the number of removed runs
 cat("Removed", length(na_run_numbers), "runs due to NA values across all scenarios.\n")
 
-# All scenarios should have the same number of resords now
+# All scenarios should have the same number of records now
 # Check that all scenarios have the same number of runs
 sapply(model_result, nrow)
 
