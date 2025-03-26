@@ -1,5 +1,5 @@
 ---
-title: "Computing Warming using High ECS"
+title: "Computing warming ranges using High ECS"
 author: "Joe Brown"
 date: "2025-01-29"
 output: html_document
@@ -10,6 +10,21 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Goal
+
+Use a model result that was calculated for each scenario using a high ECS distribution. A 5000 obs ECS sample was substituted in place of the Matlida/Hector defualt ECS to widen the distribution with the aim to broaden the initial uncertainty range. 
+
+Here we use this model result, called `initial_result5k.RDS`, to compute wamring ranges. 
+
+## Visualizing ECS distribution used to produce these model results:
+
+```{r}
+ecs_data <- read.csv("data/parameters/ecs_data_5k.csv", stringsAsFactors = F)
+
+summary(ecs_data$ECS)
+ 
+hist(ecs_data$ECS, breaks = 50)
+```
+
 
 ## Loading data
 
@@ -58,6 +73,7 @@ gsat_data_normalized <- lapply(gsat_data, function(df) {
 }) 
 
 ```
+
 Visulize full ensemble of gsat data:
 ```{r}
 gsat_data_normalized_df <- do.call(rbind, gsat_data_normalized)

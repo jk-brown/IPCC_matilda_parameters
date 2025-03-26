@@ -1,5 +1,5 @@
 ---
-title: "Idk the name yet"
+title: "This one is screwed"
 author: "Joe Brown"
 date: "2025-01-10"
 output: html_document
@@ -8,6 +8,10 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+# Note
+
+Used analysis numbering begins at 02,; 01 was an initial exploratory analysis not used in the final project.
 
 ## Goal
 
