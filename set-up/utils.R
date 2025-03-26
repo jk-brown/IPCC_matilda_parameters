@@ -46,3 +46,23 @@ normalize_to_reference <- function(df, reference_start, reference_end) {
   
   return(df)
 }
+
+## Save params
+save_params <- function(params, file_path) {
+  if (file.exists(file_path)) {
+    # Use menu() to ask the user interactively
+    choice <- menu(c("Yes", "No"), title = paste("File already exists:", file_path, 
+                                                 "\nDo you want to overwrite it?"))
+    
+    if (choice == 1) {  # User selected "Yes"
+      write.csv(params, file_path, row.names = FALSE)
+      message("File overwritten: ", file_path)
+    } else {
+      message("File not overwritten. Choose a unique file name if needed.")
+    }
+    
+  } else {
+    write.csv(params, file_path, row.names = FALSE)
+    message("File successfully written: ", file_path)
+  }
+}
