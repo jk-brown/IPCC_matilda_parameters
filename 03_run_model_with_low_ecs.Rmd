@@ -89,14 +89,14 @@ path_to_file <- file.path(params_dir, file_name)
 # saves parameters as a .csv
 save_params(params, path_to_file)
 ```
-# Run the model with new "low-ECS" parameters
+# Run the model
 
 ## Split parameters into separate jobs
 
-Slit parameters into jobs -- will be a list:
+Before running the model, split the generated parameter sets into smaller chunks for parallel processing:
 
 ```{r}
-# splitting params
+# splitting params into 100 separate chunks
 
 param_chunks <- split(params, 1:100)
 
@@ -104,40 +104,34 @@ param_chunks <- split(params, 1:100)
 
 ## Set up: Parallel Computing
 
+To improve efficency, parallel computing is used to distribute the model runs across multiple CPU cores.
 ```{r}
+# Detect available cores and specify how many to initialize
+cpu_cores <- detectCores() - 1 # use all but one core
+cl <- makeCluster(cpu_cores) # initialize cluster
 
-# Set-up: Parallel computing 
-
-# number of cores to put in cluster
-cpu_cores <- detectCores() - 1
-
-# intialize cluster
-cl <- makeCluster(cpu_cores)
-
-# export functions and objects needed to run model
+# export necessary objects to each worker in the cluster
 exp <- c("param_chunks", 
          "ini_list", 
          "newcore", 
          "iterate_model")
-
 clusterExport(cl, exp)
 
 ```
 
 ## Run model using parallel
 
+Execute Hector + Matilda in parallel for each climate scenario, using pre-defined parameter chunks.
 ```{r}
-# Run model in parallel mode
+start <- Sys.time()
+# Run model in parallel across scenarios
 result <- parLapply(cl, names(ini_list), function(scenario_name) {
   
-  library(hector)  # or any required package
-  
-  # store data in scenario object
+  # retrieve scenario ini file from list
   scenario <- ini_list[[scenario_name]]
-  # initialize core with the names of the current scenario
-  core <- newcore(scenario, name = scenario_name)
+  core <- newcore(scenario, name = scenario_name) # initialize model core
   
-  # run model for each param chunk for the current core 
+  # Iterate model over each parameter chunk
   result_list <- lapply(param_chunks, function(chunk) {
     
     iterate_model(core = core, 
@@ -153,57 +147,74 @@ result <- parLapply(cl, names(ini_list), function(scenario_name) {
   
 })
 
-# Add names to the list 
+# Assign scenario names to results
 names(result) <- names (ini_list)
 
+# Stop parallel cluster once processing is complete
 stopCluster(cl)
+
+# Print elapsed time
+end <- Sys.time()
+print(end - start)
+
 ```
 
+### Ensure consistent run numbering
+
+Adjust run numbering across parameter chunks to maintain consistency between model outputs.
 ```{r}
-# ensure correct run_number from one chunk to the next
-# Loop over each scenario in result
+# Loop over each scenario in result and adjust run numbers--ensures correct run_number from one chunk to the next.
 for (scenario_name in names(result)) {
   
-  scenario_list <- result[[scenario_name]]  # Extract the list of 100 chunks
-  max_run_number <- 0  # Start counting from 1
+  scenario_list <- result[[scenario_name]]  # Extract scenario chunk list
+  max_run_number <- 0  # # Initialize counter to start counting from 1
   
   for (i in seq_along(scenario_list)) {
-    scenario_list[[i]]$run_number <- scenario_list[[i]]$run_number + max_run_number
+    scenario_list[[i]]$run_number <- scenario_list[[i]]$run_number + max_run_number # Offset run numbers
     max_run_number <- max(scenario_list[[i]]$run_number)  # Update max for next chunk
   }
   
-  # Store the updated scenario back in result
+  # Store updated results
   result[[scenario_name]] <- scenario_list
 }
+
 ```
 
-Find NAs:
-```{r}
-## Find NAs
+### Identify and track NA values
 
-na_runs <- list()  # Initialize empty list
+Check for missing values (`NA`) in the model results and flag affected run numbers for troubleshooting.
+```{r}
+## Find runs with missing values (NAs)
+na_runs <- list()
 
 # Loop over each scenario
  for (scenario_name in names(result)) {
      
      scenario_list <- result[[scenario_name]]  # Extract list of 100 chunks
      
-     # Extract run numbers where there are NAs
+     # identify run numbers where there are NAs
      na_run_numbers <- unlist(lapply(scenario_list, function(df) {
-         df$run_number[rowSums(is.na(df)) > 0]  # Get run_number where any column has NA
-     }))
+       
+         df$run_number[rowSums(is.na(df)) > 0]  # Get run_number with any NA values
      
-     # Store results for this scenario
+       }))
+     
+     # Store results if any NAs are found
      if (length(na_run_numbers) > 0) {
-         na_runs[[scenario_name]] <- unique(na_run_numbers)  # Store only unique run numbers
-     }
+       
+         na_runs[[scenario_name]] <- unique(na_run_numbers)  # Keep only unique run numbers
+     
+         }
  }
 
 # Print summary of NA runs
  print(na_runs)
+ 
 ```
 
-Bind results into a new `model_result` object:
+### Combine results into a single data object
+
+Once the model runs are complete, merge all chunked results into a unified data set for analysis:
 ```{r}
 # bind chunked results into a df for each scenario
 model_result <- lapply(result, function(scenario) {
@@ -216,37 +227,54 @@ model_result <- lapply(result, function(scenario) {
 
 ```
 
-## Testing removing NAs from all scenarios -- this means any runs with NAs in the higher SSPs will be removed from all scenario runs.
+## Remove runs with `NA` values
+
+To ensure consistency, any runs with `NA` values in one scenario will be removed from all scenarios. This guarantees that all scenarios contain the same set of valid runs, preventing bias, errors, or complications introduced by incomplete data.
+
+### Step 1: Identify runs with NA values
 ```{r}
-# Step 1: Identify all run_numbers with NA in any scenario
+# Identify all run_numbers with NA in any scenario
 na_run_numbers <- unique(unlist(lapply(model_result, function(df) {
+  
   df$run_number[rowSums(is.na(df)) > 0]  # Extract run numbers with NA
-})))
 
-print(na_run_numbers)
+  })))
 
-# Step 2: Remove these run_numbers from all scenario data frames
-model_result <- lapply(model_result, function(df) {
-  df[!df$run_number %in% na_run_numbers, ]  # Keep only valid runs
-})
-
-# Print the number of removed runs
-cat("Removed", length(na_run_numbers), "runs due to NA values across all scenarios.\n")
-
-# All scenarios should have the same number of records now
-# Check that all scenarios have the same number of runs
-sapply(model_result, nrow)
+print(na_run_numbers) # display affected run_numbers for verification
 
 ```
 
-## Save job
+### Step 2: Remove runs with NA values
+```{r}
+# Remove runs with NA values across all scenarios
+# If a run has NA values in any scenario, remove it from all scenarios.
+model_result <- lapply(model_result, function(df) {
+  
+  df[!df$run_number %in% na_run_numbers, ]  # Keep only valid runs
+
+  })
+
+```
+
+### Step 3: Verify removal of NA runs
+```{r}
+# Print the number of removed runs and verify
+cat("Removed", length(na_run_numbers), "runs due to NA values across all scenarios.\n")
+
+# Check that all scenarios now have the same number of runs
+sapply(model_result, nrow)
+```
+
+# Save job
 
 ```{r}
+# Define file path
 result_dir <- here("output", "model_results")
-
 file_name <- "initial_result_low_ecs.RDS"
+file_path <- file.path(result_dir, file_name)
 
-saveRDS(model_result, file.path(result_dir, file_name))
+# Save model results using the new function
+save_model_results(model_result, file_path)
 
 ```
 
