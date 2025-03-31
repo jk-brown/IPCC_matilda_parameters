@@ -9,184 +9,102 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Goals
+# Goals
 
-Here the goal is simply to see if I can use the `score_ramp` function to score the large ensemble and constrain it down to fit closer with the IPCC outputs (also similar to MAGICC and FaIR).
+This code document filters the Hector + Matilda perturbed parameter ensemble to identify ensemble members  who's central (and upper and lower bounds) are consistent with IPCC AG1-assessed near-, mid-, and long-term warming ranges.
 
-For this analysis we used the following limits for scoring:
+# Set-up
 
-- Historical Temperature: w1 = 0.1; w2 = 0.5
-
-- Historical atmospheric CO2 concentration: w1 = 3; w2 = 15
- 
-- Historical ocean carbon update: w1 = 0.1; w2 = 0.8
-
-*Currently skipping the scoring against history process to give us as many ensemble members as possible to work with as we try to get an ensemble that aligns with IPCC.*
-
-### Load in large ensemble
-
-testing the full 15k ensemble because maybe this will work now that I have a workflow for ensemble selection.
-
-<!-- ```{r} -->
-<!-- source("set-up/source_all.R") -->
-
-<!-- model_result <- readRDS("output/model_results/initial_result_low_ecs.RDS") -->
-
-<!-- # # Step 1: Identify all run_numbers with NA in any scenario -->
-<!-- # na_run_numbers <- unique(unlist(lapply(model_result, function(df) { -->
-<!-- #   df$run_number[rowSums(is.na(df)) > 0]  # Extract run numbers with NA -->
-<!-- # }))) -->
-<!-- #  -->
-<!-- # print(na_run_numbers) -->
-<!-- #  -->
-<!-- # # Step 2: Remove these run_numbers from all scenario data frames -->
-<!-- # model_result <- lapply(model_result, function(df) { -->
-<!-- #   df[!df$run_number %in% na_run_numbers, ]  # Keep only valid runs -->
-<!-- # }) -->
-<!-- #  -->
-<!-- # # Print the number of removed runs -->
-<!-- # cat("Removed", length(na_run_numbers), "runs due to NA values across all scenarios.\n") -->
-<!-- #  -->
-<!-- # # All scenarios should have the same number of records now -->
-<!-- # # Check that all scenarios have the same number of runs -->
-<!-- # sapply(model_result, nrow) -->
-
-<!-- ``` -->
-
-
-### Here we begin with the large ensemble of runs should be around 15k runs.
-
+Source files in `set-up` folder.
 ```{r}
 source("set-up/source_all.R")
 
-model_result <- readRDS("output/model_results/initial_result_low_ecs_10k.RDS")
-
-sapply(model_result, nrow)
 ```
 
-## Skip scoring to see if that helps
-### Scoring model runs
+Load model result. 
 
-<!-- ```{r} -->
-<!-- model_scores <- lapply(model_result, function(df) { -->
+Model results produced in `Rmd 03` have been saved in the following directory: `output/model_results`.
+```{r}
+model_result <- readRDS("output/model_results/initial_result_low_ecs_10k.RDS")
 
-<!--   temp_wt <- score_runs(df, criterion_temp, score_ramp, w1 = 0.1, w2 = 0.5) -->
-<!--   temp_wt <- na.omit(temp_wt) -->
+```
 
-<!--   co2_wt <- score_runs(df, criterion_co2_obs(), score_ramp, w1 = 3, w2 = 15) -->
-<!--   co2_wt <- na.omit(co2_wt) -->
+Confirm that all scenarios retain the same set of ensemble members following NA removal in previous workflow step. This is a check to maintain consistency in downstream analysis.
 
-<!--   ocean_uptake <- score_runs(df, criterion_ocean_uptake, score_ramp, w1 = 0.1, w2 = 1.0) -->
-<!--   ocean_uptake <- na.omit(ocean_uptake) -->
+```{r}
+sapply(model_result, nrow)
 
-<!--   score_list <- list(temp_wt, co2_wt, ocean_uptake) -->
+```
 
-<!--   mc_score <- multi_criteria_weighting(score_list) -->
+The model result for each scenario should have the same number of rows.
 
-<!--   return(mc_score) -->
+# Process GSAT Data
 
-<!-- }) -->
-<!-- ``` -->
+The following steps extract and normalize the GSAT (`global_tas`) response variable from the model output. We normalize the results to 1995-2014 reference period to prepare the data fro comparison against IPCC WGI assessed warming ranges.  
 
-<!-- ### Filtering top ensembles -->
+## Extract GSAT Data
 
-<!-- ```{r} -->
+Extract only the `global_tas` variable (Global Surface Air Temperature) from the model results. This is the key variable for for evaluating the ensemble warming range. 
 
-<!-- top_scores <- lapply(model_scores, function(df){ -->
-
-<!--   top_percentile <- quantile(df$mc_weight, 0.20) -->
-
-<!--   top_scores_magicc <- df %>% -->
-
-<!--     filter(mc_weight >= top_percentile) -->
-
-<!-- }) -->
-
-<!-- ``` -->
-
-<!-- This result will leave us with the top ~2000 performing ensemble members based on their multi-criteria score. -->
-
-<!-- Merge model weights with model results (for plotting later): -->
-<!-- ```{r} -->
-<!-- weighted_ensemble <- Map(function(a, b) { -->
-
-<!--   merged <- merge(a, b, by = "run_number") -->
-
-<!--   return(merged) -->
-
-<!-- }, model_result, top_scores) -->
-
-<!-- ``` -->
-
-*Pick-up here since we are currently skipping scoring*
-
-## Computing summary stats for the initial low-ecs ensemble 
-```{r, message=FALSE, warning=FALSE}
-## subset to only include the variable of interest
-gsat_data_weighted <- lapply(model_result, function(df) {  ##If by-passing the scoring/filtering step - change to model_result
+```{r}
+# Extract global_tas from each scenario 
+gsat_data <- lapply(model_result, function(df) {  
   
   subset_data = subset(df, variable == "global_tas")
   
   return(subset_data)
 })
 
-## normalize gsat data 
-gsat_data_normalized <- lapply(gsat_data_weighted, function(df) {
+```
+
+## Normalize GSAT to the IPCC reference period (1995-2014)
+
+Normalize the GSAT time series to the 1995-2014 reference period, consistent with IPCC AR6 convention. 
+
+*Note*: The `normalize_to_reference()` function is provided in the project's `utils` folder: `set-up/utils.R`.
+
+```{r}
+# Normalize GSAT data to the 1995–2014 reference period
+gsat_data_normalized <- lapply(gsat_data, function(df) {
   
-  normalized <- normalize_to_reference(df, reference_start = 1995, reference_end = 2014)
+  normalized <- normalize_to_reference(df, 
+                                       reference_start = 1995, 
+                                       reference_end = 2014)
   
   return(normalized)
 }) 
 
-## compute summary statistics
-# summary_weighting <- lapply(names(gsat_data_normalized), function(scenario_name) {
-#   
-#   df <- gsat_data_normalized[[scenario_name]]
-#   
-#   summary_wts <- df %>% 
-#   group_by(year) %>%
-#   summarise(
-#     median = quantile(value, probs = 0.50),
-#     ci_05 = quantile(value, probs = 0.05),
-#     ci_10 = quantile(value, probs = 0.10),
-#     ci_33 = quantile(value, probs = 0.33),
-#     ci_67 = quantile(value, probs = 0.67),
-#     ci_90 = quantile(value, probs = 0.90),
-#     ci_95 = quantile(value, probs = 0.95),
-#     .groups = "drop"
-#   ) %>% 
-#   subset(year > 1849 & year < 2101)
-#   
-#   summary_wts$scenario <- scenario_name
-#   
-#   return(summary_wts)
-#   
-# })
-# 
-# names(summary_weighting) <- names(model_result)
-
 ```
 
-### Define metrics of interest
+# Define warming metric and compute warming results
 
-We define a warming metric to give us median warming in the year 2100 give the filtered Hector ensemble.
+## Define warming metric
 
-```{r define metric for end of century warming}
+Define the metric used to compute *median GSAT for 2081-2100*. This metric will be used to identify ensemble members consistent with IPCC-assessed end-of-century warming ranges. 
+
+*Note*: Additional metrics for other time periods will be computed down stream as needed.
+
+```{r}
+# Define end-of-century warming metric (median GSAT over 2081-2100)
 warming_metric <- new_metric(var = "global_tas", years = 2081:2100, op = median)
   
 ```
 
-### Compute warming results 
+## Compute warming results 
 
-Using the `metric_calc` function we compute the warming results.
-```{r compute warming metrics}
+Compute end-of-century warming values for each ensemble member. These values will be used to identify ensemble members consistent with IPCC-assessed long-term warming ranges.
+
+```{r}
+# compute end-of-century warmign results
 warming_results <- lapply(gsat_data_normalized, function(df) {
   
   metric_result <- metric_calc(df, warming_metric)
   
   return(metric_result)
 })
+
 ```
+
 
 ## What is the size of the ensemble before filtering for each of the SSP scenarios:
 
