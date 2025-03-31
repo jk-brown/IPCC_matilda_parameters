@@ -105,86 +105,114 @@ warming_results <- lapply(gsat_data_normalized, function(df) {
 
 ```
 
+## Check ensemble size
 
-## What is the size of the ensemble before filtering for each of the SSP scenarios:
+Check the number of available ensemble members for each SSP scenario. This step verifies that all scenarios have the same number of runs, consistent with the precautions implemented in the previous workflow document (`03_run_model_with_low_ecs.Rmd`).
 
 ```{r}
-# Check the number of runs in each SSP
+# Check the number of runs for each SSP
 run_counts <- sapply(warming_results, function(df) nrow(df))
 
 # Print counts to inspect
 print(run_counts)
 
 ```
-Certain precautions were taken in `03_run_model_with_low_ecs.Rmd` to make sure that all scenarios have the same number of runs.
+All SSPs should have the same number of results.
 
-#### Filter to align with IPCC
+# Indentify ensemble aligned with IPCC warming ranges
 
-Here we are filtering and comparing against IPCC to determine how much filtering (and from which side of the distribution) will give us an ensemble that aligns with the IPCC warming range.
+## Step 1: Compare ensmeble distirbution to IPCC range
+
+We begin with SSP2-4.5 because it is the IPCC's recommended scenario for assessing model consistency. It provides a mid-range forcing case suitable for evaluating whether the ensemble aligns with the IPCC's assessed warming uncertainty range.
 
 ```{r}
-# Extract the specific dataset for SSP2-4.5
+# Extract SSP2-4.5 warming results
 ssp_data <- warming_results$`SSP2-4.5`
 
-# Define IPCC Target Values
+# Define IPCC Target Values - This information can be found in TABLE 7.SM.4 of IPCC AR6 WGI Ch. 7
 ipcc_median <- 1.81  # Median target for SSP2-4.5
 ipcc_lower <- 1.24   # 5th percentile target
 ipcc_upper <- 2.59   # 95th percentile target
 
-# Step 1: Compute full ensemble statistics
+# Compute ensemble percentiles
 ensemble_median <- quantile(ssp_data$metric_result, 0.5)
 ensemble_lower <- quantile(ssp_data$metric_result, 0.05)
 ensemble_upper <- quantile(ssp_data$metric_result, 0.95)
 
-# Print initial statistics
+# Display ensemble distribution relative to IPCC Targets
 cat("Original Median:", ensemble_median, "\n")
 cat("Original 5th Percentile:", ensemble_lower, "\n")
 cat("Original 95th Percentile:", ensemble_upper, "\n")
+```
 
-# Step 2: Filter ensemble members within the IPCC range
+After running this, compare the ensemble's median and spread against IPCC targets. This will inform whether filtering is needed and whether the ensemble covers the assessed range sufficiently. 
+
+## Step 2: Filter the ensmeble based on IPCC range
+
+Filter the ensemble to retain runs within (or near) the IPCC WGI-assessed range. 
+A small tolerance is applied to prevent over-trimming the ensemble and enough members remain for sub-sampling. 
+The allowance values can be adjusted to modify the width of the accepted range. 
+
+```{r}
+# Filter ensemble members within the IPCC range
 filtered_df <- ssp_data %>%
-  filter(metric_result >= (ipcc_lower - 0.3), metric_result <= (ipcc_upper + 0.08))
+  filter(metric_result >= (ipcc_lower - 0.3), # adjust allowance as needed to fit IPCC
+         metric_result <= (ipcc_upper + 0.08)) # adjust allowance as needed to fit IPCC
 
-# Print the number of runs after filtering
+# Report the number of retained runs
 cat("Number of runs after initial filtering:", nrow(filtered_df), "\n")
 
-set.seed(44)  # You can choose any number here
+```
 
-# Step 3: Subsample from the filtered set to optimize alignment
-best_subset <- NULL
-best_score <- Inf  # Lower is better
+This step reduces the ensemble to only include runs that are approximately compatible with the IPCC's range. This gives us an initial candidate set of ensemble members for further refinement.
 
+## Step 3: Subsample to optimize IPCC alignment
+
+Subsample from the filtered set to identify an ensemble subset that best matches the IPCC WGI-assessed median and percentiles.
+
+```{r}
+# Optimize subset to align with IPCC target values
+set.seed(44)  # Ensure reproducibility
+
+best_subset <- NULL # Placeholder to store best subset
+best_score <- Inf  # Initialize best score with a large value 
+
+# Loop to search for the best-matching ensemble subset
 for (i in 1:1000) {  # Try 1000 different subsets
-  candidate_subset <- slice_sample(filtered_df, n = 6000, replace = FALSE)  # Adjust `n` if needed
+  
+  # Draw a random sample of 6000 ensemble members from the full ensemble
+  candidate_subset <- slice_sample(filtered_df, n = 6000, replace = FALSE)
 
-  # Compute quantiles
+  # Compute percentiles of the candidate subset
   med <- median(candidate_subset$metric_result)
   low <- quantile(candidate_subset$metric_result, 0.05)
   up <- quantile(candidate_subset$metric_result, 0.95)
 
-  # Compute error score based on IPCC targets
+  # Calculate a simple score based on the absolute deviation from IPCC targets
   score <- abs(med - ipcc_median) + abs(low - ipcc_lower) + abs(up - ipcc_upper)
 
-  # Keep best match
+  # Keep the candidate subset if it outperforms the current best subset
   if (score < best_score) {
     best_score <- score
     best_subset <- candidate_subset
   }
 }
 
+# Store the best-matching sibset as the final ensemble
 resampled_subset <- best_subset
 
-# Compute final statistics after resampling
+# Report the final statistics of the selected ensemble
 filtered_median <- median(resampled_subset$metric_result)
 filtered_lower <- quantile(resampled_subset$metric_result, 0.05)
 filtered_upper <- quantile(resampled_subset$metric_result, 0.95)
 
-# Print final results
 cat("Filtered Median:", filtered_median, "\n")
 cat("Filtered 5th Percentile:", filtered_lower, "\n")
 cat("Filtered 95th Percentile:", filtered_upper, "\n")
 
 ```
+
+This step identifies the best-matching subset of ensemble members, minimizing deviation from the IPCC WGI-assessed median, 5th, and 95th percentiles. This subset will serve as the IPCC-aligned ensemble for downstream analysis.
 
 ```{r}
 # Extract the dataset for SSP2-4.5
