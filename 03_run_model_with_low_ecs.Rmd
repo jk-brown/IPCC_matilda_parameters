@@ -88,6 +88,7 @@ path_to_file <- file.path(params_dir, file_name)
 
 # saves parameters as a .csv
 save_params(params, path_to_file)
+
 ```
 # Run the model
 
@@ -136,7 +137,7 @@ result <- parLapply(cl, names(ini_list), function(scenario_name) {
     
     iterate_model(core = core, 
                   params = chunk, 
-                  save_years = 1800:2200, 
+                  save_years = 1850:2150, 
                   save_vars = c("global_tas", 
                                 "gmst", 
                                 "CO2_concentration", 
@@ -272,6 +273,7 @@ sapply(model_result, nrow)
 result_dir <- here("output", "model_results")
 file_name <- "initial_result_low_ecs.RDS"
 file_path <- file.path(result_dir, file_name)
+
 
 # Save model results using the new function
 save_model_results(model_result, file_path)
