@@ -198,7 +198,7 @@ for (i in 1:1000) {  # Try 1000 different subsets
   }
 }
 
-# Store the best-matching sibset as the final ensemble
+# Store the best-matching subset as the final ensemble
 resampled_subset <- best_subset
 
 # Report the final statistics of the selected ensemble
@@ -214,102 +214,33 @@ cat("Filtered 95th Percentile:", filtered_upper, "\n")
 
 This step identifies the best-matching subset of ensemble members, minimizing deviation from the IPCC WGI-assessed median, 5th, and 95th percentiles. This subset will serve as the IPCC-aligned ensemble for downstream analysis.
 
-```{r}
-# Extract the dataset for SSP2-4.5
-ssp_data <- warming_results$`SSP2-4.5`
+# Building IPCC parameter set
 
-# Define IPCC target values
-ipcc_median <- 1.81  
-ipcc_lower <- 1.24    
-ipcc_upper <- 2.59
+## Extract IPCC-aligned ensmeble member `run_numbers`
 
-# Compute original ensemble statistics
-ensemble_median <- median(ssp_data$metric_result)
-ensemble_lower <- quantile(ssp_data$metric_result, 0.05)
-ensemble_upper <- quantile(ssp_data$metric_result, 0.95)
-
-# Compute absolute deviation from IPCC targets
-ssp_data <- ssp_data %>%
-  mutate(
-    median_diff = abs(metric_result - ipcc_median),
-    lower_diff = abs(metric_result - ipcc_lower),
-    upper_diff = abs(metric_result - ipcc_upper)
-  )
-
-# Assign weights: Lower values get higher weight (better match)
-ssp_data <- ssp_data %>%
-  mutate(
-    weight = 1 / (1 +  3 * abs(metric_result - ipcc_median) + 
-                       4 * abs(metric_result - ipcc_lower) + 
-                       2 * abs(metric_result - ipcc_upper))
-  )
-
-# Normalize weights to sum to 1
-ssp_data$weight <- ssp_data$weight / sum(ssp_data$weight)
-
-# Resample based on weights
-best_subset <- NULL
-best_score <- Inf  # for best score, lower is better
-
-for (i in 1:1000) {  # Try 1000 different subsets
-  candidate_subset <- slice_sample(ssp_data, n = 4900, weight_by = weight, replace = F)
-  
-  # Compute quantiles
-  med <- median(candidate_subset$metric_result)
-  low <- quantile(candidate_subset$metric_result, 0.05)
-  up <- quantile(candidate_subset$metric_result, 0.95)
-
-  # Compute error score based on IPCC targets
-  score <- abs(med - ipcc_median) + abs(low - ipcc_lower) + abs(up - ipcc_upper)
-
-  # Keep best match
-  if (score < best_score) {
-    best_score <- score
-    best_subset <- candidate_subset
-  }
-}
-
-resampled_subset <- best_subset
-
-# Compute final statistics after resampling
-filtered_median <- median(resampled_subset$metric_result)
-filtered_lower <- quantile(resampled_subset$metric_result, 0.05)
-filtered_upper <- quantile(resampled_subset$metric_result, 0.95)
-
-# Print results
-cat("Original Median:", ensemble_median, "\n")
-cat("Filtered Median:", filtered_median, "\n")
-cat("Original 5th Percentile:", ensemble_lower, "\n")
-cat("Filtered 5th Percentile:", filtered_lower, "\n")
-cat("Original 95th Percentile:", ensemble_upper, "\n")
-cat("Filtered 95th Percentile:", filtered_upper, "\n")
-
-```
-
-*Okay this is still not working as intended and its getting a little ridiculous* 
-*I think the next thing to try is to have two sets of results:*
-*1) A set of results from the low ecs full ensemble that gets us as close as possible to the IPCC ranges without being overly controlling.*
-*2) a set if results from the full 15k ensmeble that gets us as close as possible to the IPCC range even if it require forcefully filtering out the ensemble members that have too high a differences from IPCC on the low end*
-
-
-Now that we have some filtered ensemble that generally aligns with IPCC, extract the run_number from the selected subset.
+With the optimized ensemble subset selected, we can extract the corresponding `run_number` identifiers. These will be used to select the same ensemble members across all SSP scenarios to ensure consistency.
 
 ```{r}
-# Extract run numbers from the selected subset
+# Extract run_number from the selected subset
 ipcc_aligned_run_numbers <- resampled_subset$run_number
 
-# Print number of selected runs
+# display the number of runs selected 
 cat("Number of selected run numbers:", length(ipcc_aligned_run_numbers), "\n")
 
-# check to make sure the run_numbers are identical, if everything done correctly they should be
+# Confirm that the extracted run_numbers match those in the selected subset 
+# (this is a safety check - they should always be identical)
 identical(ipcc_aligned_run_numbers, resampled_subset$run_number)
 
 ```
-Now that we have these run numbers selected, we want to filter all SSPs using these run_numbers.
 
-Ensure all SSPs use only these identified IPCC-aligned runs: 
+## Apply IPCC-aligned ensemble to all SSPs
+
+Now we apply extracted runs to all SSP scenarios, ensuring the filtered ensemble is consistently used for future analyses.
+
+### Filter ensemble members across SSPs 
+
+Filter each SSP scenario to retain only the runs identified as IPCC-aligned.
 ```{r}
-
 # Filter each SSP using only the IPCC-aligned run numbers
 filtered_results <- lapply(warming_results, function(df) {
   
@@ -319,52 +250,16 @@ filtered_results <- lapply(warming_results, function(df) {
 
 # Check if all SSPs now have the same number of runs
 filtered_run_counts <- sapply(filtered_results, nrow)
-
 print(filtered_run_counts)  # Should be identical across all SSPs
 
 ```
 
-### Can skip because all scenarios had the same number of runs to begin with.
-Okay unfortunately, even though we used the IPCC-aligned runs, all SSPs still do not have the exact same run_numbers. So we need to identify what the strict common run_numbers are:
+### Evaluate how other SSPs align with IPCC targets
 
-<!-- ```{r} -->
-<!-- # Find run numbers that exist in ALL SSPs and store as a vector -->
-<!-- strict_common_run_vector <- Reduce(intersect,  -->
-<!--                                    lapply(filtered_results, function(df) df$run_number)) -->
-
-<!-- strict_common_run_numbers <- data.frame(run_number = strict_common_run_vector) -->
-
-<!-- # Print how many runs are in the strict common set -->
-<!-- cat("Number of runs in strict common set:", length(strict_common_run_vector), "\n") -->
-
-<!-- ``` -->
-
-Now that the strict common runs are identified -- 4453 total runs across all SSP scenarios, we will re-filter all SSPs to match exactly:
-
-<!-- ```{r} -->
-<!-- # Apply strict filtering so all SSPs have the exact same runs -->
-<!-- filtered_results <- lapply(filtered_results, function(df) { -->
-
-<!--   df %>% filter(run_number %in% strict_common_run_vector) -->
-
-<!-- }) -->
-
-<!-- # Verify final run counts -->
-<!-- final_run_counts <- sapply(filtered_results, nrow) -->
-<!-- print(final_run_counts)  # All numbers should now be identical -->
-
-<!-- ``` -->
-
-
-## Filtering other SSPs
-
-This is a test to see if the ensemble that produces a good fit for SSP2-4.5 will produce a good fit for the other SSPs. 
-
-I am using the run_numbers for the filtered ensemble from SSP245 to filter other SSPs and then checking their quantiles against IPCC values.
-
-Check to see how the other SSPs align with IPCC when we use this subset of ensembles.
+Check how well the filtered ensembles matches IPCC warming ranges across all SSPs.
 
 ```{r}
+# compute and display 5th, 50th, and 95th for each SSP
 lapply(filtered_results, function(df) {
   
   quantile(df$metric_result, c(0.05, 0.50, 0.95))
@@ -372,42 +267,66 @@ lapply(filtered_results, function(df) {
 })
 ```
 
-Now that we have a semi-final set of runs that mostly reproduce WGI assessed warming values, we can filter for parameter sets that result in those ensmeble members.
+This provides a diagnostic for whether the selected ensemble is reasonably aligned with IPCC constraints beyond the SSP2-4.5 scenario. But still only represents the long-term, end-of-century warming.
+
+### Extract parameter sets for IPCC-aligned runs
+
+Extract all corresponding parameter sets for the IPCC-aligned runs. These will be saved and used to run an IPCC-aligned Hector + Matilda instance. 
+
+*NOTE*: The initial parameter set loaded below may already be present in the global environment. Otherwise the initial parameter set should be saved in the `data/parameters` directory.
 
 ```{r}
-## NOTE that the params have to match the params used to run the model (this can be overlooked so make sure you check)
+# load initial parameter set used to run the model.
 init_params <- read.csv("data/parameters/initial_parameters_low_ecs_10k.csv", stringsAsFactors = F)
 
+# Assign run_numbers column 
 init_params$run_number <- 1:nrow(init_params)
 
-# Filter the parameter set to match the strict common run numbers
+# Filter to retain only the aligned parameter sets
 IPCC_params <- init_params %>% 
   filter(run_number %in% ipcc_aligned_run_numbers) 
 
-# Convert the run_number column to numeric
+# Ensure run_numbers are numeric and consistent
+# This is necessary because run_number is likely read as an integer.
+# For comparison functions like identical() to check for appropriate matching, 
+# run_number must be treated as numeric to avoid false mismatches.
 IPCC_params$run_number <- as.numeric(IPCC_params$run_number)
 
-# check that the new param run_numbers are the same as `ipcc_aligned_run_numbers` and `resmapled_subset`
+# Sanity checks
+# Confirm that:
+# (1) The number of parameter sets matches the number of selected ensemble members.
+# (2) The run_numbers from the parameter set exactly match those used in the filtered ensemble.
+# This ensures that the extracted parameter sets correspond perfectly to the IPCC-aligned ensemble members.`
 nrow(IPCC_params)
-
-# check that the IPCC_params run_numbers are equivalent to the resampled_subset run_numbers
 identical(sort(IPCC_params$run_number), sort(resampled_subset$run_number))
 ```
 
-Check:
-```{r}
-# Verify that the number of parameter sets matches the filtered ensemble
-print(nrow(IPCC_params))  # Should be the same as filtered_results count
+### Cross-check ensmeble and parameter consistency
 
-print(sapply(filtered_results, nrow))
+Confirm that the number of parameter sets and ensemble members are consistent across all SSPs.
+
+```{r}
+# Verify that counts match across all SSP objects
+print(nrow(IPCC_params))  # Should equal the filtered run count
+print(sapply(filtered_results, nrow)) # Should be equal across SSPs
+
 ```
 
-Save these "IPCC" parameters so that we can use them to run a test to see is importing them to run hector will produce the IPCC range.
+## Save IPCC-aligned parameter set
+
+Save the final set of IPCC-aligned parameters for use in subsequent model runs.
 
 ```{r}
+# Remove run_number column before saving
 IPCC_params <- IPCC_params %>% 
   select(-run_number)
-write.csv(IPCC_params, "output/parameters/IPCC_params.csv", row.names = F)
+
+# Save the IPCC-aligned parameter set for use in future model runs
+param_output_dir <- here("output", "parameters")
+file_name <- "IPCC_params.csv"
+path_to_IPCC_params <- file.path(param_output_dir, file_name)
+save_params(IPCC_params, path_to_IPCC_params)
+
 ```
 
 ## Visualizations
