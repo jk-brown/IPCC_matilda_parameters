@@ -7,32 +7,24 @@ output: html_document
 
 # Goal
 
-In this document we want to re-run the model with the IPCC parameters and determine if all time periods align wiht IPCC values across all of the SSP scenarios.
+This document re-runs the Hector + Matilda model using the IPCC-aligned parameter sets to verify that the resulting ensemble is in line with IPCC WGI-assessed warming expectations across all SSPs and time periods. This serves as a sanity check or proof for confirming that the selected parameters performs as expected.  
 
-## Import Parameters
-
-```{r}
-IPCC_params <- read.csv("output/parameters/IPCC_params.csv", stringsAsFactors = F)
-
-```
-
-# Set up model
+# Set-up
 
 Source files in `set-up` folder.
-
 ```{r}
 source("set-up/source_all.R")
 
 ```
+# Load scenario config files
 
-Generate initial parameters to be used for model runs.
+Load `ini` files that define the configuration for each SSP scenario:
 
-Load .ini files:
 ```{r}
-# ini directory 
+# define path to Hector ini directory 
 ini_dir <- paste0(system.file("input", package = "hector"), "/")
 
-# read ini files into a list 
+# load each scenario ini file into a list
 ini_list <- list("SSP1-1.9" = paste0(ini_dir, "hector_ssp119.ini"), 
                  "SSP1-2.6" = paste0(ini_dir, "hector_ssp126.ini"), 
                  "SSP2-4.5" = paste0(ini_dir, "hector_ssp245.ini"), 
@@ -41,6 +33,16 @@ ini_list <- list("SSP1-1.9" = paste0(ini_dir, "hector_ssp119.ini"),
 
 ```
 
+# Import IPCC-aligned parameter set
+
+Import the previously saved IPCC-aligned parameter set. This set will be used to re-run the model and verify whether it produces IPCC-consistent warming across all SSP scenarios.
+
+```{r}
+IPCC_params <- read.csv("output/parameters/IPCC_params.csv", stringsAsFactors = F)
+
+```
+
+# Run the model
 ## Split parameters into separate jobs
 
 Split parameters into jobs -- will be a list:
