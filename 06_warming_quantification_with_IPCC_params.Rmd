@@ -1,5 +1,5 @@
 ---
-title: "Warming quantification using IPCC params"
+title: "Temperature Projection Visualizations"
 author: "Joe Brown"
 date: "2025-03-07"
 output: html_document
@@ -9,29 +9,151 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Load data
+# Goal
 
-Load full result:
-```{r}
-# load result 
-model_result_rerun <- readRDS("output/model_results/update_posterior_result_low_ecs.RDS")
-
-model_result_rerun <- lapply(model_result_rerun, function(df){
-  
-  no_NAs <- na.omit(df)
-  
-  return(no_NAs)
-  })
-```
-
-## Set-up 
-
-Source files in `set-up` folder.
+# Set-up
 
 ```{r}
 source("set-up/source_all.R")
+```
+
+# Load data
+
+For this analysis we want to make sure we have to model results in the global environment:
+
+1) model_result that represents the long form selection of model results that identify those projections that align with IPCC assessed ranges. This can be produced by running Rmd `02_searching_for_IPCC_aligned_ensemble`. One this script is run, we only really need to keep the `gsat_data_normalized` object.
+
+2) A model re-run that uses the IPCC_params to produce a result. This can be loaded from the `output/model_results` directory -- file name = `IPCC_params_run.RDS`. Once loaded we will need to adjust it to match the data we want to plot (normalized gsat).
+
+Load model result for the IPCC param re-run:
+```{r}
+# load result 
+model_result_rerun <- readRDS("output/model_results/IPCC_params_run.RDS")
+
+# checking for NAs - there should ne none
+anyNA(model_result_rerun)
+```
+# Managing model results
+
+We want the two model results to represent the same output. Therefore we will manage the re-run model result to include only the gsat variable and will normalize to the same reference period as the initiail model result. 
+
+## Extract GSAT Data for "IPCC" result
+
+Extract only the `global_tas` variable (Global Surface Air Temperature) from the model results. This is the key variable for for evaluating the ensemble warming range. 
+
+```{r}
+# Extract global_tas from each scenario 
+IPCC_gsat_data <- lapply(model_result_rerun, function(df) {  
+  
+  subset_data = subset(df, variable == "global_tas")
+  
+  return(subset_data)
+})
 
 ```
+
+## Filtering gsat_data_normalized for runs the align with IPCC
+
+What we want here is to have a filtered data set from the full normalized gsat data that should only include the run numbers that are in the IPCC aligned results. This makes sure that we are comparing what should theoretically be the same data.
+
+*Need to figure out the best way to have this in here in a sustainable way...as this currently stands this is confusing and not super helpful. Maybe find a way to describe this in an issue to add to github.*
+
+```{r}
+filtered_gsat_data <- lapply(gsat_data_normalized, function(df) {
+  
+  df %>% filter(run_number %in% ipcc_aligned_run_numbers)
+  
+})
+```
+
+## Normalize GSAT to the IPCC reference period (1995-2014)
+
+Normalize the GSAT time series to the 1995-2014 reference period, consistent with IPCC AR6 convention. 
+
+*Note*: The `normalize_to_reference()` function is provided in the project's `utils` folder: `set-up/utils.R`.
+
+```{r}
+# Normalize GSAT data to the 1995–2014 reference period
+IPCC_gsat_data_normalized <- lapply(IPCC_gsat_data, function(df) {
+  
+  normalized <- normalize_to_reference(df, 
+                                       reference_start = 1995, 
+                                       reference_end = 2014)
+  
+  return(normalized)
+}) 
+
+```
+
+Okay we should now be able to remove the `model_result_rerun` object to help save memory. This is optional and may be situational so I am just performing this in the console.
+
+*NOTE: There is clearly a difference in the two model results, which is concerning and something I will want to figure out. But for now I just want to get some of this code out of the way.*
+
+## Create data frames for plotting
+
+To plot this data we are going to want some data frames. These data frames should include:
+
+1) A df of GSAT normalized data that includes all the model runs from the init result -- `gsat_data_normalized_df`.
+2) A df of GSAT normalized data that includes only the IPCC aligned params from param search -- `filtered_gsat_data_normalized_df`.
+3) a df the same as number 2 but that comes from the re-run result using the IPCC params -- `IPCC_gsat_data_normalized_df`.
+
+```{r}
+# 1
+gsat_normalized_df <- do.call(rbind, gsat_data_normalized)
+
+# 2
+filtered_gsat_df <- do.call(rbind, filtered_gsat_data)
+
+# 3
+IPCC_gsat_data_normalized_df <- do.call(rbind, IPCC_gsat_data_normalized)
+
+# we can also try listing this so its all in one place
+gsat_results <- list("full_gsat" = gsat_normalized_df, 
+                     "IPCC_fitered_gsat" = filtered_gsat_df, 
+                     "IPCC_params_gsat" = IPCC_gsat_data_normalized_df)
+
+```
+
+Now I just want to filter this a bit to include the years we want to plot. To be consistent I only want to plot starting from 1995 so anything before then can be dropped.
+
+```{r}
+gsat_data_from_95 <- lapply(gsat_results, function(df) {
+  
+  subset_result <- subset(df, year > 1994 & year < 2151)
+  
+  return(subset_result)
+  
+})
+```
+
+# Visualizations 
+
+There are a number of visualizations that will be helpful here. This section covers a few:
+
+1) Overlaying the GSAT results. Here we want to show the init result, then we want to show the IPCC aligned ensemble, and finally we want to overlay the model re-run with IPCC aligned params to show that re-running the model with these params leads to the IPCC aligned ensemble. 
+
+```{r}
+ggplot() +
+  geom_line(data = gsat_data_from_95$full_gsat,
+    aes(x = year, y = value, group = run_number), 
+    color = "darkgrey") +
+  geom_line(data = gsat_data_from_95$IPCC_params_gsat, 
+            aes(x = year, y = value, group = run_number), 
+            color = "dodgerblue", 
+            alpha = 0.3) +
+  geom_line(data = gsat_data_from_95$IPCC_fitered_gsat, 
+            aes(x = year, y = value, group = run_number), 
+            color = "red") +
+  facet_wrap(~scenario, scales = "free_y") +
+  theme_light()
+
+```
+
+*Okay obviously these are not overlaying as expected. Which means there is something going on in terms of these two analyses not aligning. There could be many different reasons for this -- unfortunately there are many places that errors could be occurring. So the first thing to check is to make sure I am actually representing the same data. This will require re-running the entire workflow from top to bottom. Make sure everything is overwritten to make sure we are getting all the correct results. MAKE A NOTE IN ISSUES ABOUT THIS WITH SOME PATHS FORWARD.*  
+
+# Compute summary statistics
+
+For each of the full results we want to compute summary statistics that will be used for visualizations. 
 
 ## Computing summary stats
 

@@ -270,7 +270,7 @@ sapply(model_result, nrow)
 ```{r}
 # Define file path
 result_dir <- here("output", "model_results")
-file_name <- "initial_result_low_ecs.RDS"
+file_name <- "initial_result_low_ecs_10k.RDS"
 file_path <- file.path(result_dir, file_name)
 
 # Save model results using the new function
