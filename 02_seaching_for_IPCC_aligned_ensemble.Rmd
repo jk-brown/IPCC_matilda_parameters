@@ -156,8 +156,8 @@ The allowance values can be adjusted to modify the width of the accepted range.
 ```{r}
 # Filter ensemble members within the IPCC range
 filtered_df <- ssp_data %>%
-  filter(metric_result >= (ipcc_lower - 0.3), # adjust allowance as needed to fit IPCC
-         metric_result <= (ipcc_upper + 0.08)) # adjust allowance as needed to fit IPCC
+  filter(metric_result >= (ipcc_lower - 0.2), # adjust allowance as needed to fit IPCC
+         metric_result <= (ipcc_upper + 0.3)) # adjust allowance as needed to fit IPCC
 
 # Report the number of retained runs
 cat("Number of runs after initial filtering:", nrow(filtered_df), "\n")
