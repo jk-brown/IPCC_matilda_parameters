@@ -156,8 +156,8 @@ The allowance values can be adjusted to modify the width of the accepted range.
 ```{r}
 # Filter ensemble members within the IPCC range
 filtered_df <- ssp_data %>%
-  filter(metric_result >= (ipcc_lower - 0.2), # adjust allowance as needed to fit IPCC
-         metric_result <= (ipcc_upper + 0.3)) # adjust allowance as needed to fit IPCC
+  filter(metric_result >= (ipcc_lower - 0.3), # adjust allowance as needed to fit IPCC
+         metric_result <= (ipcc_upper + 0.5)) # adjust allowance as needed to fit IPCC
 
 # Report the number of retained runs
 cat("Number of runs after initial filtering:", nrow(filtered_df), "\n")
@@ -168,11 +168,14 @@ This step reduces the ensemble to only include runs that are approximately compa
 
 ## Step 3: Subsample to optimize IPCC alignment
 
-Subsample from the filtered set to identify an ensemble subset that best matches the IPCC WGI-assessed median and percentiles.
+Sub-sample from the filtered set to identify an ensemble subset that best matches the IPCC WGI-assessed median and percentiles.
 
 ```{r}
 # Optimize subset to align with IPCC target values
 set.seed(44)  # Ensure reproducibility
+
+# Ensure data is in a consistent row order
+filtered_df <- filtered_df %>% arrange(run_number)
 
 best_subset <- NULL # Placeholder to store best subset
 best_score <- Inf  # Initialize best score with a large value 
@@ -181,7 +184,8 @@ best_score <- Inf  # Initialize best score with a large value
 for (i in 1:1000) {  # Try 1000 different subsets
   
   # Draw a random sample of 6000 ensemble members from the full ensemble
-  candidate_subset <- slice_sample(filtered_df, n = 6000, replace = FALSE)
+  sample_id <- sample(nrow(filtered_df), size = 4000)
+  candidate_subset <- filtered_df[sample_id, ]
 
   # Compute percentiles of the candidate subset
   med <- median(candidate_subset$metric_result)
@@ -230,6 +234,12 @@ cat("Number of selected run numbers:", length(ipcc_aligned_run_numbers), "\n")
 # Confirm that the extracted run_numbers match those in the selected subset 
 # (this is a safety check - they should always be identical)
 identical(ipcc_aligned_run_numbers, resampled_subset$run_number)
+
+```
+### Optional Save IPCC aligned run numbers
+
+```{r}
+saveRDS(resampled_subset$run_number, "output/parameters/ipcc_aligned_run_numbers.rds")
 
 ```
 
@@ -347,26 +357,6 @@ filtered_gsat_df <- do.call(rbind, filtered_gsat_data)
 
 filtered_gsat_df <- subset(filtered_gsat_df, year > 1994)
 ```
-
-```{r}
-
-# full_ensemble <- ggplot() +
-#   
-#   geom_line(data = gsat_normalized_df, 
-#             aes(x = year, y = value, group = run_number), 
-#             color = "dodgerblue", alpha = 0.5) +
-# 
-#   geom_line(data = filtered_gsat_df, 
-#             aes(x = year, y = value, group = run_number), 
-#             color = "salmon", alpha = 0.3) +
-#   
-#     theme_light() +
-#     facet_wrap(~scenario, scales = "free_y")
-# 
-# full_ensemble
-
-```
-
 
 ### Computing values for full AR6 assessed warming range table:
 ```{r}
